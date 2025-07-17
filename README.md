@@ -1,11 +1,13 @@
 # Tensorust
 
-[![Crates.io](https://img.shields.io/crates/v/tensorust)](https://crates.io/crates/tensorust)
-[![Documentation](https://docs.rs/tensorust/badge.svg)](https://docs.rs/tensorust)
-[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![Build Status](https://github.com/yourusername/tensorust/actions/workflows/rust.yml/badge.svg)](https://github.com/yourusername/tensorust/actions)
+Tensorust is a high-performance tensor computation library for Rust, providing compile-time verification of tensor shapes, compiler-enforced automatic differentiation, and explicit management of tensor operations across CPU and CUDA devices. Designed to support numerical computing and machine learning, Tensorust leverages Rust’s ownership and borrowing system to ensure memory safety and prevent data races.
 
-Tensorust is a high-performance tensor computation library for Rust, featuring automatic differentiation, GPU acceleration, and an intuitive API for numerical computing and machine learning.
+## 🎯 Project Goals
+
+- **Compile-Time Safety**: All tensor operations are statically checked to prevent shape errors at compile time.
+- **Safe Automatic Differentiation**: Automatic differentiation on tensors is implemented with compiler-level safety guarantees.
+- **Cross-Device Computation**: Tensors support safe and explicit movement and computation across CPU and CUDA.
+- **Memory Safety**: Memory safety of tensors is guaranteed through Rust’s ownership and borrowing system, eliminating data races.
 
 ## Features
 
