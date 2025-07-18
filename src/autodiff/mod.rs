@@ -11,18 +11,16 @@ pub use graph::*;
 pub use ops::*;
 pub use tensor::*;
 
-use std::sync::Arc;
+use std::sync::{Arc, Mutex, Weak};
+use uuid::Uuid;
 
 /// Represents a differentiable operation in the computation graph.
 pub trait DifferentiableOp: std::fmt::Debug + Send + Sync {
     /// Computes the forward pass of the operation.
-    fn forward(&self, inputs: &[&Tensor]) -> Result<Tensor, AutodiffError>;
+    fn forward(&self, inputs: &[&crate::tensor::Tensor]) -> Result<crate::tensor::Tensor, crate::error::TensorustError>;
     
     /// Computes the backward pass (gradient) of the operation.
-    fn backward(&self, grad: &Tensor, inputs: &[&Tensor], output: &Tensor) -> Vec<Tensor>;
-    
-    /// Returns the names of the input tensors.
-    fn input_names(&self) -> Vec<&'static str>;
+    fn backward(&self, grad: &crate::tensor::Tensor, inputs: &[&crate::tensor::Tensor], output: &crate::tensor::Tensor) -> Vec<crate::tensor::Tensor>;
 }
 
 /// Error type for automatic differentiation operations.
@@ -44,122 +42,88 @@ pub enum AutodiffError {
 /// A node in the computation graph.
 #[derive(Debug)]
 pub struct Node {
-    /// The tensor value at this node.
-    pub tensor: Tensor,
-    
-    /// The operation that produced this tensor (None for leaf nodes).
+    /// The unique ID of this node.
+    pub id: Uuid,
+    /// The tensor associated with this node.
+    pub tensor: crate::tensor::Tensor,
+    /// The operation that produced this node.
     pub op: Option<Arc<dyn DifferentiableOp>>,
-    
-    /// The input nodes to this operation.
+    /// The inputs to the operation.
     pub inputs: Vec<Arc<Node>>,
-    
-    /// The gradient of the loss with respect to this tensor.
-    pub gradient: Option<Tensor>,
+    /// The gradient of this node.
+    pub gradient: Option<crate::tensor::Tensor>,
+    /// Whether this node requires a gradient.
+    pub requires_grad: bool,
+    /// A weak reference to this node's gradient function.
+    grad_fn: Option<Weak<Mutex<Box<dyn FnMut() -> Result<(), crate::error::TensorustError>>>>>,
 }
 
 impl Node {
     /// Creates a new leaf node (input tensor).
-    pub fn new_leaf(tensor: Tensor) -> Arc<Self> {
+    pub fn new_leaf(tensor: crate::tensor::Tensor) -> Arc<Self> {
         Arc::new(Self {
+            id: Uuid::new_v4(),
             tensor,
             op: None,
             inputs: Vec::new(),
             gradient: None,
+            requires_grad: true,
+            grad_fn: None,
         })
     }
-    
-    /// Creates a new operation node.
-    pub fn new_op(
-        tensor: Tensor,
+
+    /// Creates a new internal node (the result of an operation).
+    pub fn new_internal(
+        tensor: crate::tensor::Tensor,
         op: Arc<dyn DifferentiableOp>,
         inputs: Vec<Arc<Node>>,
     ) -> Arc<Self> {
+        let requires_grad = inputs.iter().any(|i| i.requires_grad);
         Arc::new(Self {
+            id: Uuid::new_v4(),
             tensor,
             op: Some(op),
             inputs,
             gradient: None,
+            requires_grad,
+            grad_fn: None,
         })
     }
-    
-    /// Computes the gradient of the loss with respect to this node.
-    pub fn backward(&self, grad: Option<&Tensor>) -> Result<(), AutodiffError> {
-        // Initialize gradient if not already set
-        let grad = match (grad, &self.gradient) {
-            (Some(g), None) => g.clone(),
-            (Some(g), Some(existing)) => g.add(&existing).map_err(|e| {
-                AutodiffError::GradientError(format!("Failed to accumulate gradient: {}", e))
-            })?,
-            (None, None) => {
-                // If this is the output node, create a ones tensor with the same shape
-                    Tensor::ones_like(&self.tensor).map_err(|e| {
-                        AutodiffError::GradientError(format!("Failed to create ones tensor: {}", e))
-                    })?
-            }
-            (None, Some(_)) => return Ok(()), // Already computed
-        };
-        
-        // Store the gradient
-        self.gradient = Some(grad.clone());
-        
-        // If this is a leaf node, we're done
-        let op = match &self.op {
-            Some(op) => op,
-            None => return Ok(()),
-        };
-        
-        // Compute gradients for inputs
-        let input_tensors: Vec<_> = self.inputs.iter().map(|node| &node.tensor).collect();
-        let input_grads = op.backward(&grad, &input_tensors, &self.tensor);
-        
-        // Propagate gradients to input nodes
-        for (i, (node, grad)) in self.inputs.iter().zip(input_grads.into_iter()).enumerate() {
-            node.backward(Some(&grad)).map_err(|e| {
-                AutodiffError::GradientError(format!("Failed to propagate gradient to input {}: {}", i, e))
-            })?;
+
+    /// Backpropagates the gradient from this node.
+    pub fn backward(&self, grad: Option<&crate::tensor::Tensor>) -> Result<(), crate::error::TensorustError> {
+        if !self.requires_grad {
+            return Ok(());
         }
-        
+
+        let grad = if let Some(grad) = grad {
+            grad.clone()
+        } else {
+            // If no gradient is provided, assume it's 1.
+            crate::tensor::Tensor::ones_like(&self.tensor).map_err(|e| {
+                crate::error::TensorustError::Other(format!("Failed to create ones tensor: {}", e))
+            })?
+        };
+
+        if let Some(grad_fn_weak) = &self.grad_fn {
+            if let Some(grad_fn_arc) = grad_fn_weak.upgrade() {
+                let mut grad_fn = grad_fn_arc.lock().unwrap();
+                (*grad_fn)().map_err(|e| {
+                    crate::error::TensorustError::Other(format!("Gradient computation failed: {}", e))
+                })?;
+            }
+        }
+
+        if let Some(op) = &self.op {
+            let input_tensors: Vec<_> = self.inputs.iter().map(|i| &i.tensor).collect();
+            let input_grads = op.backward(&grad, &input_tensors, &self.tensor);
+
+            for (input_node, input_grad) in self.inputs.iter().zip(input_grads) {
+                input_node.backward(Some(&input_grad))?;
+            }
+        }
+
         Ok(())
-    }
-}
-
-/// A computation graph for automatic differentiation.
-#[derive(Debug, Default)]
-pub struct ComputationGraph {
-    nodes: Vec<Arc<Node>>,
-}
-
-impl ComputationGraph {
-    /// Creates a new empty computation graph.
-    pub fn new() -> Self {
-        Self { nodes: Vec::new() }
-    }
-    
-    /// Adds a new tensor to the graph.
-    pub fn add_tensor(&mut self, tensor: Tensor) -> Arc<Node> {
-        let node = Node::new_leaf(tensor);
-        self.nodes.push(node.clone());
-        node
-    }
-    
-    /// Adds a new operation to the graph.
-    pub fn add_op(
-        &mut self,
-        op: Arc<dyn DifferentiableOp>,
-        inputs: &[Arc<Node>],
-    ) -> Result<Arc<Node>, AutodiffError> {
-        let input_tensors: Vec<_> = inputs.iter().map(|node| &node.tensor).collect();
-        let output = op.forward(&input_tensors)?;
-        
-        let node = Node::new_op(output, op, inputs.to_vec());
-        self.nodes.push(node.clone());
-        
-        Ok(node)
-    }
-    
-    /// Computes the gradients of the loss with respect to all tensors in the graph.
-    pub fn backward(&self, output: &Node) -> Result<(), AutodiffError> {
-        output.backward(None)
     }
 }
 

@@ -5,8 +5,8 @@
 //! by Sergey Ioffe and Christian Szegedy (2015).
 
 use crate::{
-    autodiff::{tensor::Tensor, ComputationGraph, DifferentiableOp, Node},
-    tensor::Tensor as BaseTensor,
+    autodiff::{Node},
+    tensor::Tensor,
 };
 use std::sync::Arc;
 
@@ -24,10 +24,10 @@ pub struct BatchNorm2d {
     beta: Arc<Node>,
     
     /// Running mean of the features [num_features]
-    running_mean: BaseTensor,
+    running_mean: Tensor,
     
     /// Running variance of the features [num_features]
-    running_var: BaseTensor,
+    running_var: Tensor,
     
     /// Number of features (channels for 2D input)
     num_features: usize,
@@ -54,7 +54,6 @@ impl BatchNorm2d {
     /// * `gamma_init` - Function to initialize gamma
     /// * `beta_init` - Function to initialize beta
     pub fn new<F, G>(
-        graph: &mut ComputationGraph,
         num_features: usize,
         momentum: Option<f32>,
         eps: Option<f32>,
@@ -63,8 +62,8 @@ impl BatchNorm2d {
         beta_init: G,
     ) -> Self
     where
-        F: Fn(&[usize]) -> BaseTensor,
-        G: Fn(&[usize]) -> BaseTensor,
+        F: Fn(&[usize]) -> Tensor,
+        G: Fn(&[usize]) -> Tensor,
     {
         let momentum = momentum.unwrap_or(0.1);
         let eps = eps.unwrap_or(1e-5);
@@ -74,21 +73,21 @@ impl BatchNorm2d {
             let gamma_data = gamma_init(&[num_features]);
             let beta_data = beta_init(&[num_features]);
             
-            let gamma = graph.add_tensor(gamma_data, true);
-            let beta = graph.add_tensor(beta_data, true);
+            let gamma = Arc::new(Node::new_leaf(gamma_data));
+            let beta = Arc::new(Node::new_leaf(beta_data));
             
             (gamma, beta)
         } else {
             // Use fixed scale of 1 and shift of 0
-            let ones = graph.add_tensor(BaseTensor::ones(&[num_features]).unwrap(), false);
-            let zeros = graph.add_tensor(BaseTensor::zeros(&[num_features]).unwrap(), false);
+            let ones = Arc::new(Node::new_leaf(Tensor::ones(&[num_features]).unwrap()));
+            let zeros = Arc::new(Node::new_leaf(Tensor::zeros(&[num_features]).unwrap()));
             
             (ones, zeros)
         };
         
         // Initialize running statistics
-        let running_mean = BaseTensor::zeros(&[num_features]).unwrap();
-        let running_var = BaseTensor::ones(&[num_features]).unwrap();
+        let running_mean = Tensor::zeros(&[num_features]).unwrap();
+        let running_var = Tensor::ones(&[num_features]).unwrap();
         
         Self {
             gamma,
@@ -105,14 +104,12 @@ impl BatchNorm2d {
     /// Applies batch normalization to the input.
     ///
     /// # Arguments
-    /// * `graph` - The computation graph
     /// * `input` - Input tensor of shape [batch_size, num_features, height, width]
     ///
     /// # Returns
     /// Normalized output tensor of the same shape as input
     pub fn forward(
         &mut self,
-        graph: &mut ComputationGraph,
         input: Arc<Node>,
     ) -> Result<Arc<Node>, Box<dyn std::error::Error>> {
         let input_shape = input.tensor.shape();
@@ -151,84 +148,44 @@ impl BatchNorm2d {
                 .add(&unbiased_var.mul_scalar(self.momentum)?)?;
             
             // Normalize using batch statistics
-            self.normalize(graph, input, mean, var)
+            self.normalize(input, mean, var)
         } else {
             // Inference mode: use running statistics
-            let mean = graph.add_tensor(self.running_mean.clone(), false);
-            let var = graph.add_tensor(self.running_var.clone(), false);
+            let mean = self.running_mean.clone();
+            let var = self.running_var.clone();
             
-            self.normalize(graph, input, mean, var)
+            self.normalize(input, mean, var)
         }
     }
     
     /// Internal helper function to apply normalization
     fn normalize(
         &self,
-        graph: &mut ComputationGraph,
         input: Arc<Node>,
-        mean: BaseTensor,
-        var: BaseTensor,
+        mean: Tensor,
+        var: Tensor,
     ) -> Result<Arc<Node>, Box<dyn std::error::Error>> {
         let input_shape = input.tensor.shape();
         let num_features = input_shape[1];
         
         // Add epsilon for numerical stability and compute standard deviation
-        let std = graph.add_op(
-            Arc::new(SqrtOp),
-            &[graph.add_tensor(var.add_scalar(self.eps)?, false)],
-            true,
-        )?;
+        let std = var.add_scalar(self.eps)?.sqrt()?;
         
         // Reshape parameters for broadcasting
-        let mean_reshaped = graph.add_tensor(
-            mean.reshape(&[1, num_features, 1, 1])?,
-            false,
-        );
-        
-        let std_reshaped = graph.add_op(
-            Arc::new(ReshapeOp::new(&[1, num_features, 1, 1])),
-            &[std],
-            true,
-        )?;
+        let mean_reshaped = mean.reshape(&[1, num_features, 1, 1])?;
+        let std_reshaped = std.reshape(&[1, num_features, 1, 1])?;
         
         // Normalize: (x - mean) / sqrt(var + eps)
-        let normalized = graph.add_op(
-            Arc::new(DivOp),
-            &[
-                graph.add_op(
-                    Arc::new(SubOp),
-                    &[input, mean_reshaped],
-                    true,
-                )?,
-                std_reshaped,
-            ],
-            true,
-        )?;
+        let normalized = input.sub(&mean_reshaped)?.div(&std_reshaped)?;
         
         // Scale and shift: gamma * normalized + beta
-        let gamma_reshaped = graph.add_op(
-            Arc::new(ReshapeOp::new(&[1, num_features, 1, 1])),
-            &[self.gamma.clone()],
-            true,
-        )?;
+        let gamma_reshaped = self.gamma.reshape(&[1, num_features, 1, 1])?;
+        let beta_reshaped = self.beta.reshape(&[1, num_features, 1, 1])?;
         
-        let beta_reshaped = graph.add_op(
-            Arc::new(ReshapeOp::new(&[1, num_features, 1, 1])),
-            &[self.beta.clone()],
-            true,
-        )?;
+        let scaled = gamma_reshaped.mul(&normalized)?;
+        let output = scaled.add(&beta_reshaped)?;
         
-        let scaled = graph.add_op(
-            Arc::new(MultiplyOp),
-            &[gamma_reshaped, normalized],
-            true,
-        )?;
-        
-        graph.add_op(
-            Arc::new(AddOp),
-            &[scaled, beta_reshaped],
-            true,
-        )
+        Ok(Arc::new(Node::new_leaf(output)))
     }
     
     /// Sets the layer to training mode.

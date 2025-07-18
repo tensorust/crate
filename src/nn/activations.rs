@@ -6,9 +6,8 @@ use crate::{
     storage::Storage,
     error::Result,
     ops::{
-        relu, relu_, relu_grad, sigmoid, sigmoid_, sigmoid_grad, tanh, tanh_, tanh_grad,
-        softmax, softmax_, softmax_grad, leaky_relu, leaky_relu_, leaky_relu_grad,
-        elu, elu_, elu_grad, gelu, gelu_grad,
+        relu, relu_grad, sigmoid, sigmoid_grad, tanh, tanh_grad,
+        leaky_relu_grad, elu_grad, gelu_grad,
     },
 };
 use std::fmt;
@@ -435,7 +434,7 @@ where
         grad_output: &Tensor<T, Self::Output, S>,
     ) -> Result<(
         Tensor<T, Self::Input, S>,
-        Option<Vec<Tensor<T, crate::dimension::DynamicDim, S>>>,
+        Option<Vec<Tensor<T, crate::dimension::dynamic::DynamicDim, S>>>,
     )> {
         let grad_input = self.func.backward(input, output, grad_output)?;
         Ok((grad_input, None))

@@ -1,7 +1,7 @@
 //! Reduction operations for tensors.
 
 use crate::{
-    dimension::{Dimension, DynamicDim},
+    dimension::{dynamic::DynamicDim, Dimension},
     error::{Result, TensorustError},
     tensor::Tensor,
     storage::Storage,

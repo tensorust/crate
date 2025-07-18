@@ -6,7 +6,7 @@
 
 use crate::{
     error::Result,
-    tensor::{Tensor, TensorLike},
+    tensor::Tensor,
 };
 use std::{fmt::Debug, sync::Arc};
 
@@ -14,12 +14,12 @@ pub mod eval;
 pub mod fusion;
 pub mod nodes;
 
-pub use eval::{Evaluator, Gradient};
-pub use fusion::FusionOptimizer;
-pub use nodes::{BinaryOp, Node, UnaryOp};
+pub use eval::Evaluator;
+pub use fusion::Optimize;
+pub use nodes::ExprNode;
 
 /// A trait for nodes in the expression graph.
-pub trait Expression: Debug + Send + Sync + 'static {
+pub trait ExprNode: Debug + Send + Sync + 'static {
     /// Returns the shape of the output tensor.
     fn shape(&self) -> &[usize];
 
@@ -34,10 +34,10 @@ pub trait Expression: Debug + Send + Sync + 'static {
     }
 
     /// Evaluates the expression node.
-    fn eval(&self) -> Result<Tensor>;
+    fn eval(&self) -> Result<crate::tensor::Tensor>;
 
     /// Computes the gradient of the expression node.
-    fn grad(&self, grad: &Tensor) -> Result<Gradient>;
+    fn grad(&self, grad: &Tensor) -> Result<eval::Gradient>;
 }
 
 /// A reference-counted expression node.
@@ -105,49 +105,49 @@ pub trait ExprBuilder: Sized {
     
     /// Creates a new expression that computes the mean of the tensor.
     fn mean(self, axis: Option<usize>, keepdims: bool) -> Expr {
-        let node = MeanNode::new(self.into_expr(), axis, keepdims);
+        let node = nodes::ReduceNode::new(self.into_expr(), axis, keepdims, |a, b| a + b, 0.0, "Mean");
         Arc::new(node)
     }
     
     /// Creates a new expression that computes the sum of the tensor.
     fn sum(self, axis: Option<usize>, keepdims: bool) -> Expr {
-        let node = SumNode::new(self.into_expr(), axis, keepdims);
+        let node = nodes::ReduceNode::new(self.into_expr(), axis, keepdims, |a, b| a + b, 0.0, "Sum");
         Arc::new(node)
     }
     
     /// Creates a new expression that computes the maximum value of the tensor.
     fn max(self, axis: Option<usize>, keepdims: bool) -> Expr {
-        let node = MaxNode::new(self.into_expr(), axis, keepdims);
+        let node = nodes::ReduceNode::new(self.into_expr(), axis, keepdims, |a, b| a.max(b), f32::NEG_INFINITY, "Max");
         Arc::new(node)
     }
     
     /// Creates a new expression that computes the minimum value of the tensor.
     fn min(self, axis: Option<usize>, keepdims: bool) -> Expr {
-        let node = MinNode::new(self.into_expr(), axis, keepdims);
+        let node = nodes::ReduceNode::new(self.into_expr(), axis, keepdims, |a, b| a.min(b), f32::INFINITY, "Min");
         Arc::new(node)
     }
     
     /// Creates a new expression that reshapes the tensor.
     fn reshape(self, shape: Vec<usize>) -> Expr {
-        let node = ReshapeNode::new(self.into_expr(), shape);
+        let node = nodes::ReshapeNode::new(self.into_expr(), shape);
         Arc::new(node)
     }
     
     /// Creates a new expression that transposes the tensor.
     fn transpose(self, axes: Option<Vec<usize>>) -> Expr {
-        let node = TransposeNode::new(self.into_expr(), axes);
+        let node = nodes::TransposeNode::new(self.into_expr(), axes);
         Arc::new(node)
     }
     
     /// Creates a new expression that slices the tensor.
     fn slice(self, slices: Vec<(Option<usize>, Option<usize>, usize)>) -> Expr {
-        let node = SliceNode::new(self.into_expr(), slices);
+        let node = nodes::SliceNode::new(self.into_expr(), slices);
         Arc::new(node)
     }
     
     /// Creates a new expression that broadcasts the tensor to a new shape.
     fn broadcast_to(self, shape: Vec<usize>) -> Expr {
-        let node = BroadcastNode::new(self.into_expr(), shape);
+        let node = nodes::BroadcastNode::new(self.into_expr(), shape);
         Arc::new(node)
     }
 }
@@ -157,7 +157,7 @@ impl ExprBuilder for Expr {
     where
         F: Fn(f32) -> f32 + Send + Sync + 'static,
     {
-        let node = UnaryNode::new(self, op, op_type);
+        let node = nodes::UnaryNode::new(self, op, op_type);
         Arc::new(node)
     }
     
@@ -165,7 +165,7 @@ impl ExprBuilder for Expr {
     where
         F: Fn(f32, f32) -> f32 + Send + Sync + 'static,
     {
-        let node = BinaryNode::new(self, rhs, op, op_type);
+        let node = nodes::BinaryNode::new(self, rhs, op, op_type);
         Arc::new(node)
     }
 }
@@ -183,23 +183,11 @@ impl Evaluate for Expr {
     }
 }
 
-/// A trait for optimizing expression graphs.
-pub trait Optimize {
-    /// Optimizes the expression graph.
-    fn optimize(&self) -> Expr;
-}
-
-impl Optimize for Expr {
-    fn optimize(&self) -> Expr {
-        let optimizer = FusionOptimizer::new();
-        optimizer.optimize(self)
-    }
-}
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::tensor::Tensor;
+    use crate::{tensor::Tensor, dimension::Dimension};
     
     #[test]
     fn test_basic_expression() {
@@ -208,8 +196,8 @@ mod tests {
         let b = Tensor::from_vec(vec![4.0, 5.0, 6.0], vec![3]).unwrap();
         
         // Build expression graph
-        let a_expr = Arc::new(InputNode::new(a.shape().to_vec())) as Expr;
-        let b_expr = Arc::new(InputNode::new(b.shape().to_vec())) as Expr;
+        let a_expr = Arc::new(nodes::InputNode::new(a.shape().to_vec())) as Expr;
+        let b_expr = Arc::new(nodes::InputNode::new(b.shape().to_vec())) as Expr;
         
         let expr = a_expr.add(b_expr).sigmoid();
         
@@ -232,7 +220,7 @@ mod tests {
         ).unwrap();
         
         // Build expression graph
-        let a_expr = Arc::new(InputNode::new(a.shape().to_vec())) as Expr;
+        let a_expr = Arc::new(nodes::InputNode::new(a.shape().to_vec())) as Expr;
         
         // Compute mean along axis 0
         let mean_expr = a_expr.mean(Some(0), false);
@@ -254,8 +242,8 @@ mod tests {
         let b = Tensor::from_vec(vec![4.0, 5.0, 6.0], vec![3]).unwrap();
         
         // Build expression graph
-        let a_expr = Arc::new(InputNode::new(a.shape().to_vec())) as Expr;
-        let b_expr = Arc::new(InputNode::new(b.shape().to_vec())) as Expr;
+        let a_expr = Arc::new(nodes::InputNode::new(a.shape().to_vec())) as Expr;
+        let b_expr = Arc::new(nodes::InputNode::new(b.shape().to_vec())) as Expr;
         
         // Build expression with multiple operations
         let expr = a_expr

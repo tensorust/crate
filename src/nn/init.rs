@@ -43,10 +43,12 @@ use crate::{
     error::Result,
 };
 use rand::{
-    distributions::{Distribution, StandardNormal, Uniform},
+    distributions::{Distribution, Uniform},
     Rng,
 };
+use rand_distr::StandardNormal;
 use std::f32::consts::{PI, SQRT_2};
+use rand::distributions::Distribution;
 use num_traits::{Float, FromPrimitive, ToPrimitive};
 
 /// Initializes a tensor with values from a uniform distribution.
@@ -1148,7 +1150,7 @@ where
     fn initialize(&self, tensor: &mut Tensor<T, D, S>) -> Result<()> {
         let shape = tensor.shape();
         if shape.ndims() < 2 {
-            return Err(Error::InvalidInput(
+            return Err(crate::error::TensorustError::InvalidInput(
                 "VarianceScaling initializer requires tensors with at least 2 dimensions".to_string(),
             ));
         }

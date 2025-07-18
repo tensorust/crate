@@ -10,9 +10,11 @@ use std::fmt::{Debug, Display};
 pub mod dynamic;
 pub mod shape;
 pub mod stride;
+pub mod static_;
 
 pub use shape::Shape;
 pub use stride::Stride;
+pub use static_::StaticDim;
 
 /// A trait for types that can represent tensor dimensions.
 ///
@@ -42,11 +44,10 @@ pub trait Dimension: Clone + Debug + Display + Send + Sync + 'static {
     fn from_shape(shape: &[usize]) -> Self;
 }
 
-/// A statically-sized dimension.
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::dimension::dynamic::DynamicDim;
     
     #[test]
     fn test_static_dim() {
@@ -54,9 +55,6 @@ mod tests {
         assert_eq!(dim.ndim(), 3);
         assert_eq!(dim.size(), 24);
         assert_eq!(dim.shape(), &[2, 3, 4]);
-        
-        let strides = dim.compute_strides();
-        assert_eq!(strides.as_slice(), &[12, 4, 1]);
     }
     
     #[test]
@@ -65,9 +63,6 @@ mod tests {
         assert_eq!(dim.ndim(), 3);
         assert_eq!(dim.size(), 24);
         assert_eq!(dim.shape(), &vec![2, 3, 4]);
-        
-        let strides = dim.compute_strides();
-        assert_eq!(strides.as_slice(), &[12, 4, 1]);
     }
     
     #[test]

@@ -1,7 +1,7 @@
 //! Matrix decomposition operations.
 
 use crate::{
-    dimension::{Dimension, StaticDim},
+    dimension::Dimension,
     error::{Result, TensorustError},
     tensor::Tensor,
     storage::Storage,

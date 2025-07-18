@@ -1,8 +1,8 @@
 //! Recurrent Neural Network (RNN) layer implementation.
 
 use crate::{
-    autodiff::{tensor::Tensor, ComputationGraph, DifferentiableOp, Node},
-    tensor::Tensor as BaseTensor,
+    autodiff::{Node},
+    tensor::Tensor,
 };
 use std::sync::Arc;
 
@@ -49,24 +49,23 @@ impl RNNCell {
     /// * `weight_init` - Function to initialize weights
     /// * `bias_init` - Function to initialize bias
     pub fn new(
-        graph: &mut ComputationGraph,
         input_size: usize,
         hidden_size: usize,
         use_bias: bool,
-        weight_init: impl Fn(&[usize]) -> BaseTensor,
-        bias_init: impl Fn(&[usize]) -> BaseTensor,
+        weight_init: impl Fn(&[usize]) -> Tensor,
+        bias_init: impl Fn(&[usize]) -> Tensor,
     ) -> Self {
         // Initialize weights
         let w_xh_data = weight_init(&[input_size, hidden_size]);
         let w_hh_data = weight_init(&[hidden_size, hidden_size]);
         
-        let w_xh = graph.add_tensor(w_xh_data, true);
-        let w_hh = graph.add_tensor(w_hh_data, true);
+        let w_xh = Arc::new(Node::new_leaf(w_xh_data));
+        let w_hh = Arc::new(Node::new_leaf(w_hh_data));
         
         // Initialize bias if needed
         let b_h = if use_bias {
             let bias_data = bias_init(&[hidden_size]);
-            Some(graph.add_tensor(bias_data, true))
+            Some(Arc::new(Node::new_leaf(bias_data)))
         } else {
             None
         };
@@ -84,7 +83,6 @@ impl RNNCell {
     /// Applies the RNN cell to a single time step.
     /// 
     /// # Arguments
-    /// * `graph` - The computation graph
     /// * `x_t` - Input at time step t [batch_size, input_size]
     /// * `h_prev` - Previous hidden state [batch_size, hidden_size]
     /// 
@@ -92,46 +90,25 @@ impl RNNCell {
     /// New hidden state [batch_size, hidden_size]
     pub fn step(
         &self,
-        graph: &mut ComputationGraph,
         x_t: Arc<Node>,
         h_prev: Arc<Node>,
     ) -> Result<Arc<Node>, Box<dyn std::error::Error>> {
         // x_t @ W_xh
-        let xh = graph.add_op(
-            Arc::new(MatMulOp),
-            &[x_t, self.w_xh.clone()],
-            true,
-        )?;
+        let xh = x_t.matmul(self.w_xh.clone())?;
         
         // h_prev @ W_hh
-        let hh = graph.add_op(
-            Arc::new(MatMulOp),
-            &[h_prev, self.w_hh.clone()],
-            true,
-        )?;
+        let hh = h_prev.matmul(self.w_hh.clone())?;
         
         // xh + hh
-        let mut sum = graph.add_op(
-            Arc::new(AddOp),
-            &[xh, hh],
-            true,
-        )?;
+        let mut sum = xh.add(hh)?;
         
         // Add bias if needed
         if let Some(bias) = &self.b_h {
-            sum = graph.add_op(
-                Arc::new(AddOp),
-                &[sum, bias.clone()],
-                true,
-            )?;
+            sum = sum.add(bias.clone())?;
         }
         
         // Apply tanh activation
-        graph.add_op(
-            Arc::new(TanhOp),
-            &[sum],
-            true,
-        )
+        Ok(sum.tanh())
     }
     
     /// Returns the input-to-hidden weights.
@@ -204,21 +181,19 @@ impl RNN {
     /// * `weight_init` - Function to initialize weights
     /// * `bias_init` - Function to initialize bias
     pub fn new(
-        graph: &mut ComputationGraph,
         input_size: usize,
         hidden_size: usize,
         num_layers: usize,
         return_sequences: bool,
         return_state: bool,
         use_bias: bool,
-        weight_init: impl Fn(&[usize]) -> BaseTensor,
-        bias_init: impl Fn(&[usize]) -> BaseTensor,
+        weight_init: impl Fn(&[usize]) -> Tensor,
+        bias_init: impl Fn(&[usize]) -> Tensor,
     ) -> Self {
         let mut cells = Vec::with_capacity(num_layers);
         
         // Create the first layer
         cells.push(RNNCell::new(
-            graph,
             input_size,
             hidden_size,
             use_bias,
@@ -229,7 +204,6 @@ impl RNN {
         // Create subsequent layers
         for _ in 1..num_layers {
             cells.push(RNNCell::new(
-                graph,
                 hidden_size,  // Input size is hidden_size for deeper layers
                 hidden_size,
                 use_bias,
@@ -251,7 +225,6 @@ impl RNN {
     /// Applies the RNN to an input sequence.
     /// 
     /// # Arguments
-    /// * `graph` - The computation graph
     /// * `inputs` - Input sequence of shape [batch_size, seq_len, input_size]
     /// * `initial_states` - Optional initial hidden states for each layer
     /// 
@@ -261,7 +234,6 @@ impl RNN {
     /// - The final hidden states if return_state is true
     pub fn forward(
         &self,
-        graph: &mut ComputationGraph,
         inputs: Arc<Node>,
         initial_states: Option<Vec<Arc<Node>>>,
     ) -> Result<(Option<Arc<Node>>, Option<Vec<Arc<Node>>>), Box<dyn std::error::Error>> {
@@ -273,31 +245,20 @@ impl RNN {
         let mut h_prev = initial_states.unwrap_or_else(|| {
             (0..self.num_layers)
                 .map(|_| {
-                    graph.add_tensor(
-                        BaseTensor::zeros(&[batch_size, self.hidden_size]).unwrap(),
-                        false,
-                    )
+                    Arc::new(Node::new_leaf(Tensor::zeros(&[batch_size, self.hidden_size]).unwrap()))
                 })
                 .collect()
         });
         
         // Transpose inputs to [seq_len, batch_size, input_size] for easier iteration
-        let inputs_transposed = graph.add_op(
-            Arc::new(PermuteOp::new(vec![1, 0, 2])),
-            &[inputs],
-            true,
-        )?;
+        let inputs_transposed = inputs.permute(&[1, 0, 2])?;
         
         let mut outputs = Vec::with_capacity(seq_len);
         
         // Process each time step
         for t in 0..seq_len {
             // Get input at time step t [batch_size, input_size]
-            let x_t = graph.add_op(
-                Arc::new(IndexOp::new(0, t)),
-                &[inputs_transposed.clone()],
-                true,
-            )?;
+            let x_t = inputs_transposed.slice(vec![(Some(t), Some(t+1), 1)])?;
             
             // Process through each layer
             let mut h_t = x_t;
@@ -307,7 +268,7 @@ impl RNN {
                 let h_prev_layer = h_prev[layer_idx].clone();
                 
                 // Apply RNN cell
-                let h_t_layer = cell.step(graph, h_t, h_prev_layer)?;
+                let h_t_layer = cell.step(h_t, h_prev_layer)?;
                 
                 new_h_prev.push(h_t_layer.clone());
                 h_t = h_t_layer;
@@ -323,18 +284,10 @@ impl RNN {
         // Prepare outputs
         let output_sequence = if self.return_sequences {
             // Stack outputs along time dimension [seq_len, batch_size, hidden_size]
-            let stacked = graph.add_op(
-                Arc::new(StackOp::new(0)),
-                &outputs,
-                true,
-            )?;
+            let stacked = Node::stack(&outputs, 0)?;
             
             // Transpose back to [batch_size, seq_len, hidden_size]
-            Some(graph.add_op(
-                Arc::new(PermuteOp::new(vec![1, 0, 2])),
-                &[stacked],
-                true,
-            )?)
+            Some(stacked.permute(&[1, 0, 2])?)
         } else {
             // Just return the last output
             Some(h_prev.last().unwrap().clone())
@@ -387,51 +340,49 @@ mod tests {
     
     #[test]
     fn test_rnn_cell_forward() -> Result<(), Box<dyn std::error::Error>> {
-        let mut graph = ComputationGraph::new();
-        
         // Create a simple RNN cell
         let input_size = 3;
         let hidden_size = 2;
         let batch_size = 2;
         
         // Initialize weights with known values for testing
-        let w_xh_data = BaseTensor::from_slice(
+        let w_xh_data = Tensor::from_slice(
             &[0.1, 0.2, 0.3, 0.4, 0.5, 0.6],
-            &[input_size, hidden_size],
+            vec![input_size, hidden_size],
         )?;
         
-        let w_hh_data = BaseTensor::from_slice(
+        let w_hh_data = Tensor::from_slice(
             &[0.1, 0.2, 0.3, 0.4],
-            &[hidden_size, hidden_size],
+            vec![hidden_size, hidden_size],
         )?;
         
-        let b_h_data = BaseTensor::from_slice(&[0.1, 0.2], &[hidden_size])?;
+        let b_h_data = Tensor::from_slice(&[0.1, 0.2], vec![hidden_size])?;
         
         let cell = RNNCell {
-            w_xh: graph.add_tensor(w_xh_data, true),
-            w_hh: graph.add_tensor(w_hh_data, true),
-            b_h: Some(graph.add_tensor(b_h_data, true)),
+            w_xh: Arc::new(Node::new_leaf(w_xh_data)),
+            w_hh: Arc::new(Node::new_leaf(w_hh_data)),
+            b_h: Some(Arc::new(Node::new_leaf(b_h_data))),
             input_size,
             hidden_size,
             use_bias: true,
         };
         
         // Create input and initial hidden state
-        let x_t_data = BaseTensor::from_slice(
+        let x_t_data = Tensor::from_slice(
             &[1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
-            &[batch_size, input_size],
+            vec![batch_size, input_size],
         )?;
         
-        let h_prev_data = BaseTensor::from_slice(
+        let h_prev_data = Tensor::from_slice(
             &[0.5, 0.6, 0.7, 0.8],
-            &[batch_size, hidden_size],
+            vec![batch_size, hidden_size],
         )?;
         
-        let x_t = graph.add_tensor(x_t_data, false);
-        let h_prev = graph.add_tensor(h_prev_data, false);
+        let x_t = Arc::new(Node::new_leaf(x_t_data));
+        let h_prev = Arc::new(Node::new_leaf(h_prev_data));
         
         // Forward pass
-        let h_t = cell.step(&mut graph, x_t, h_prev)?;
+        let h_t = cell.step(x_t, h_prev)?;
         
         // Check output shape
         let output_shape = h_t.tensor.shape();
@@ -453,8 +404,6 @@ mod tests {
     
     #[test]
     fn test_rnn_forward() -> Result<(), Box<dyn std::error::Error>> {
-        let mut graph = ComputationGraph::new();
-        
         // Create a simple RNN
         let input_size = 3;
         let hidden_size = 2;
@@ -463,23 +412,22 @@ mod tests {
         let seq_len = 3;
         
         let rnn = RNN::new(
-            &mut graph,
             input_size,
             hidden_size,
             num_layers,
             true,  // return_sequences
             true,  // return_state
             true,  // use_bias
-            |shape| BaseTensor::randn(shape, 0.0, 0.1),
-            |shape| BaseTensor::zeros(shape).unwrap(),
+            |shape| Tensor::randn(shape, 0.0, 0.1),
+            |shape| Tensor::zeros(shape).unwrap(),
         );
         
         // Create input sequence [batch_size, seq_len, input_size]
-        let input_data = BaseTensor::randn(&[batch_size, seq_len, input_size], 0.0, 1.0);
-        let inputs = graph.add_tensor(input_data, true);
+        let input_data = Tensor::randn(&[batch_size, seq_len, input_size], 0.0, 1.0);
+        let inputs = Arc::new(Node::new_leaf(input_data));
         
         // Forward pass
-        let (output_sequence, final_states) = rnn.forward(&mut graph, inputs, None)?;
+        let (output_sequence, final_states) = rnn.forward(inputs, None)?;
         
         // Check outputs
         if let Some(output) = output_sequence {
@@ -504,8 +452,6 @@ mod tests {
     
     #[test]
     fn test_rnn_backward() -> Result<(), Box<dyn std::error::Error>> {
-        let mut graph = ComputationGraph::new();
-        
         // Create a simple RNN
         let input_size = 3;
         let hidden_size = 2;
@@ -514,39 +460,29 @@ mod tests {
         let seq_len = 3;
         
         let rnn = RNN::new(
-            &mut graph,
             input_size,
             hidden_size,
             num_layers,
             true,  // return_sequences
             false, // return_state
             true,  // use_bias
-            |shape| BaseTensor::randn(shape, 0.0, 0.1),
-            |shape| BaseTensor::zeros(shape).unwrap(),
+            |shape| Tensor::randn(shape, 0.0, 0.1),
+            |shape| Tensor::zeros(shape).unwrap(),
         );
         
         // Create input sequence [batch_size, seq_len, input_size]
-        let input_data = BaseTensor::randn(&[batch_size, seq_len, input_size], 0.0, 1.0);
-        let inputs = graph.add_tensor(input_data, true);
+        let input_data = Tensor::randn(&[batch_size, seq_len, input_size], 0.0, 1.0);
+        let inputs = Arc::new(Node::new_leaf(input_data));
         
         // Forward pass
-        let (output_sequence, _) = rnn.forward(&mut graph, inputs, None)?;
+        let (output_sequence, _) = rnn.forward(inputs.clone(), None)?;
         let outputs = output_sequence.unwrap();
         
         // Create a dummy loss (sum of outputs)
-        let ones = graph.add_tensor(
-            BaseTensor::ones(outputs.tensor.shape())?,
-            false
-        );
-        
-        let loss = graph.add_op(
-            Arc::new(MatMulOp),
-            &[outputs, ones],
-            true,
-        )?;
+        let loss = outputs.sum();
         
         // Backward pass
-        graph.backward(&loss)?;
+        loss.backward();
         
         // Check gradients
         for cell in &rnn.cells {

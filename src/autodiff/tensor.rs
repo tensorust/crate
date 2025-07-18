@@ -1,10 +1,10 @@
 //! Differentiable tensor type for automatic differentiation.
 
 use super::{
-    graph::{Graph, Node, NodeId},
-    ops::{Add, Mul},
+    graph,
+    ops,
 };
-use crate::tensor::{DataType, Tensor, TensorLike};
+use crate::tensor::{Tensor};
 use std::{
     cell::{Ref, RefCell},
     ops::{Add as TensorAdd, Mul as TensorMul},
@@ -17,15 +17,15 @@ use std::{
 /// differentiation. The `Graph` stores the computation graph, and the `ADTensor`
 /// stores the `NodeId` of the tensor in the graph.
 #[derive(Clone)]
-pub struct ADTensor<T: DataType> {
-    pub tensor: Tensor<T>,
-    pub graph: Rc<RefCell<Graph<T>>>,
-    pub node_id: NodeId,
+pub struct ADTensor {
+    pub tensor: Tensor,
+    pub graph: Rc<RefCell<graph::Graph>>,
+    pub node_id: graph::NodeId,
 }
 
-impl<T: DataType> ADTensor<T> {
+impl ADTensor {
     /// Creates a new `ADTensor` from a `Tensor`.
-    pub fn new(tensor: Tensor<T>, graph: Rc<RefCell<Graph<T>>>) -> Self {
+    pub fn new(tensor: Tensor, graph: Rc<RefCell<graph::Graph>>) -> Self {
         let node_id = graph.borrow_mut().add_variable(tensor.clone());
         Self {
             tensor,
@@ -35,7 +35,7 @@ impl<T: DataType> ADTensor<T> {
     }
 
     /// Returns the gradient of the tensor.
-    pub fn grad(&self) -> Ref<Tensor<T>> {
+    pub fn grad(&self) -> Ref<Tensor> {
         let graph = self.graph.borrow();
         let node = &graph.nodes[self.node_id];
         Ref::map(graph, |g| &g.nodes[node.id].grad)
@@ -48,17 +48,17 @@ impl<T: DataType> ADTensor<T> {
     }
 }
 
-impl<T: DataType> TensorLike<T> for ADTensor<T> {
-    fn a(&self) -> &Tensor<T> {
+impl<T> crate::tensor::TensorLike<T> for ADTensor {
+    fn as_tensor(&self) -> &Tensor<T> {
         &self.tensor
     }
 }
 
-impl<T: DataType> TensorAdd for ADTensor<T> {
+impl TensorAdd for ADTensor {
     type Output = Self;
 
     fn add(self, rhs: Self) -> Self::Output {
-        let op = Add::new(self.node_id, rhs.node_id);
+        let op = ops::Add::new(self.node_id, rhs.node_id);
         let result = self.tensor.add(&rhs.tensor);
         let node_id = self.graph.borrow_mut().add_node(Box::new(op));
         Self {
@@ -69,11 +69,11 @@ impl<T: DataType> TensorAdd for ADTensor<T> {
     }
 }
 
-impl<T: DataType> TensorMul for ADTensor<T> {
+impl TensorMul for ADTensor {
     type Output = Self;
 
     fn mul(self, rhs: Self) -> Self::Output {
-        let op = Mul::new(self.node_id, rhs.node_id);
+        let op = ops::Mul::new(self.node_id, rhs.node_id);
         let result = self.tensor.mul(&rhs.tensor);
         let node_id = self.graph.borrow_mut().add_node(Box::new(op));
         Self {

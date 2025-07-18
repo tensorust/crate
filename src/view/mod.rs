@@ -6,7 +6,7 @@
 use std::fmt;
 use std::ops::{Deref, Index, IndexMut};
 use crate::error::{Result, TensorustError};
-use crate::dimension::{Dimension, DynamicDim, Stride};
+use crate::dimension::{dynamic::DynamicDim, Dimension, Stride};
 
 mod slice;
 mod ops;

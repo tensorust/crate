@@ -4,8 +4,8 @@
 //! input units to 0 during training, which helps prevent overfitting.
 
 use crate::{
-    autodiff::{tensor::Tensor, ComputationGraph, DifferentiableOp, Node},
-    tensor::Tensor as BaseTensor,
+    autodiff::{Node},
+    tensor::Tensor,
 };
 use rand::{rngs::StdRng, Rng, SeedableRng};
 use std::sync::Arc;
@@ -57,14 +57,12 @@ impl Dropout {
     /// Applies dropout to the input.
     ///
     /// # Arguments
-    /// * `graph` - The computation graph
     /// * `input` - Input tensor of any shape
     ///
     /// # Returns
     /// Output tensor of the same shape as input
     pub fn forward(
         &mut self,
-        graph: &mut ComputationGraph,
         input: Arc<Node>,
     ) -> Result<Arc<Node>, Box<dyn std::error::Error>> {
         if !self.training || self.p == 0.0 {
@@ -77,20 +75,15 @@ impl Dropout {
             .map(|_| if self.rng.gen::<f32>() < self.p { 0.0 } else { 1.0 / (1.0 - self.p) })
             .collect();
         
-        let mask = graph.add_tensor(
-            BaseTensor::from_slice(
-                &mask_data,
-                input_shape,
-            )?,
-            false,
-        );
+        let mask = Tensor::from_slice(
+            &mask_data,
+            input_shape.to_vec(),
+        )?;
         
         // Element-wise multiplication with the mask
-        graph.add_op(
-            Arc::new(MultiplyOp),
-            &[input, mask],
-            true,
-        )
+        let output = input.mul(&mask)?;
+
+        Ok(Arc::new(Node::new_leaf(output)))
     }
     
     /// Sets the layer to training mode.
@@ -128,21 +121,19 @@ mod tests {
     
     #[test]
     fn test_dropout_forward_train() -> Result<(), Box<dyn std::error::Error>> {
-        let mut graph = ComputationGraph::new();
-        
         // Create a dropout layer with p=0.5 and fixed seed for testing
         let mut dropout = Dropout::new(0.5, Some(42));
         
         // Create input tensor
-        let input_data = BaseTensor::from_slice(
+        let input_data = Tensor::from_slice(
             &[1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
-            &[2, 3],  // batch_size=2, features=3
+            vec![2, 3],  // batch_size=2, features=3
         )?;
         
-        let input = graph.add_tensor(input_data, true);
+        let input = Arc::new(Node::new_leaf(input_data));
         
         // Forward pass in training mode
-        let output = dropout.forward(&mut graph, input)?;
+        let output = dropout.forward(input)?;
         
         // Check output shape
         assert_eq!(output.tensor.shape(), &[2, 3]);
@@ -166,22 +157,20 @@ mod tests {
     
     #[test]
     fn test_dropout_forward_eval() -> Result<(), Box<dyn std::error::Error>> {
-        let mut graph = ComputationGraph::new();
-        
         // Create a dropout layer with p=0.5
         let mut dropout = Dropout::new(0.5, Some(42));
         dropout.eval();
         
         // Create input tensor
-        let input_data = BaseTensor::from_slice(
+        let input_data = Tensor::from_slice(
             &[1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
-            &[2, 3],  // batch_size=2, features=3
+            vec![2, 3],  // batch_size=2, features=3
         )?;
         
-        let input = graph.add_tensor(input_data, true);
+        let input = Arc::new(Node::new_leaf(input_data));
         
         // Forward pass in evaluation mode
-        let output = dropout.forward(&mut graph, input)?;
+        let output = dropout.forward(input)?;
         
         // In evaluation mode, the output should be identical to the input
         let output_data = output.tensor.to_vec::<f32>()?;
@@ -194,36 +183,25 @@ mod tests {
     
     #[test]
     fn test_dropout_backward() -> Result<(), Box<dyn std::error::Error>> {
-        let mut graph = ComputationGraph::new();
-        
         // Create a dropout layer with p=0.5 and fixed seed for testing
         let mut dropout = Dropout::new(0.5, Some(42));
         
         // Create input tensor
-        let input_data = BaseTensor::from_slice(
+        let input_data = Tensor::from_slice(
             &[1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
-            &[2, 3],  // batch_size=2, features=3
+            vec![2, 3],  // batch_size=2, features=3
         )?;
         
-        let input = graph.add_tensor(input_data, true);
+        let input = Arc::new(Node::new_leaf(input_data));
         
         // Forward pass in training mode
-        let output = dropout.forward(&mut graph, input.clone())?;
+        let output = dropout.forward(input.clone())?;
         
         // Create a dummy loss (sum of outputs)
-        let ones = graph.add_tensor(
-            BaseTensor::ones(output.tensor.shape())?,
-            false
-        );
-        
-        let loss = graph.add_op(
-            Arc::new(MatMulOp),
-            &[output, ones],
-            true,
-        )?;
+        let loss = output.sum();
         
         // Backward pass
-        graph.backward(&loss)?;
+        loss.backward();
         
         // Check gradients
         let grad = input.gradient.as_ref().unwrap().to_vec::<f32>()?;
@@ -246,21 +224,19 @@ mod tests {
     
     #[test]
     fn test_dropout_zero_probability() -> Result<(), Box<dyn std::error::Error>> {
-        let mut graph = ComputationGraph::new();
-        
         // Create a dropout layer with p=0 (should be equivalent to identity)
         let mut dropout = Dropout::new(0.0, None);
         
         // Create input tensor
-        let input_data = BaseTensor::from_slice(
+        let input_data = Tensor::from_slice(
             &[1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
-            &[2, 3],  // batch_size=2, features=3
+            vec![2, 3],  // batch_size=2, features=3
         )?;
         
-        let input = graph.add_tensor(input_data, true);
+        let input = Arc::new(Node::new_leaf(input_data));
         
         // Forward pass in training mode
-        let output = dropout.forward(&mut graph, input.clone())?;
+        let output = dropout.forward(input.clone())?;
         
         // With p=0, the output should be identical to the input
         let output_data = output.tensor.to_vec::<f32>()?;

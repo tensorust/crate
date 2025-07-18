@@ -257,7 +257,7 @@ mod tests {
     }
     
     #[test]
-    test_computation_graph_with_reuse() -> Result<(), AutodiffError> {
+    fn test_computation_graph_with_reuse() -> Result<(), AutodiffError> {
         // Test reusing the same input in multiple operations
         // z = (x * y) + (x * 2)
         let mut graph = ComputationGraph::new();

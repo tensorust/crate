@@ -1,6 +1,6 @@
 //! Utility functions and types for working with tensor storage.
 
-use super::{Storage, StorageError, StorageHandle};
+use super::{Storage, StorageHandle};
 use std::sync::Arc;
 
 /// Converts between different storage backends.

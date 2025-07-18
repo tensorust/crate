@@ -37,41 +37,41 @@ where
     fn det(&self) -> Result<T>;
     
     /// Singular Value Decomposition (SVD).
-    fn svd(&self, full_matrices: bool) -> Result<(Self, Tensor<T, crate::dimension::DynamicDim, S>, Self)>;
+    fn svd(&self, full_matrices: bool) -> Result<(Self, Tensor<T, crate::dimension::dynamic::DynamicDim, S>, Self)>;
     
     /// Eigenvalue decomposition.
-    fn eig(&self) -> Result<(Tensor<T, crate::dimension::DynamicDim, S>, Self)>;
+    fn eig(&self) -> Result<(Tensor<T, crate::dimension::dynamic::DynamicDim, S>, Self)>;
 }
 
 // Implementation for 2D tensors
-impl<T, S> LinearAlgebra<T, S> for Tensor<T, crate::dimension::StaticDim<2>, S>
+impl<T, S> LinearAlgebra<T, S> for Tensor<T, crate::dimension::static_::StaticDim<2>, S>
 where
     T: Clone + Default + Send + Sync + 'static,
     S: Storage<T>,
     for<'a> &'a T: std::ops::Mul<Output = T> + std::ops::Add<Output = T>,
 {
     fn matmul(&self, rhs: &Self) -> Result<Self> {
-        matmul(self, rhs)
+        matmul::matmul(self, rhs)
     }
     
     fn t(&self) -> Result<Self> {
-        transpose(self)
+        transpose::transpose(self)
     }
     
     fn inv(&self) -> Result<Self> {
-        inverse(self)
+        inverse::inv(self)
     }
     
     fn det(&self) -> Result<T> {
-        determinant(self)
+        inverse::det(self)
     }
     
-    fn svd(&self, full_matrices: bool) -> Result<(Self, Tensor<T, crate::dimension::DynamicDim, S>, Self)> {
-        svd(self, full_matrices)
+    fn svd(&self, full_matrices: bool) -> Result<(Self, Tensor<T, crate::dimension::dynamic::DynamicDim, S>, Self)> {
+        decomposition::svd(self, full_matrices)
     }
     
-    fn eig(&self) -> Result<(Tensor<T, crate::dimension::DynamicDim, S>, Self)> {
-        eigenvalue_decomposition(self)
+    fn eig(&self) -> Result<(Tensor<T, crate::dimension::dynamic::DynamicDim, S>, Self)> {
+        decomposition::eig(self)
     }
 }
 
