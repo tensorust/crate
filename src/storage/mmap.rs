@@ -1,6 +1,6 @@
 //! Memory-mapped storage backend for large tensors.
 
-use super::{Storage, StorageError};
+use super::Storage;
 use memmap2::{MmapMut, MmapOptions};
 use std::{
     fs::{File, OpenOptions},
@@ -19,7 +19,7 @@ pub struct MmapStorage<T> {
     _marker: std::marker::PhantomData<T>,
 }
 
-impl<T> MmapStorage<T> {
+impl<T: Clone + Send + Sync + 'static> MmapStorage<T> {
     /// Creates a new memory-mapped storage with the given capacity.
     ///
     /// # Arguments
@@ -28,10 +28,10 @@ impl<T> MmapStorage<T> {
     pub fn with_capacity(
         path: Option<PathBuf>,
         capacity: usize,
-    ) -> Result<Self, StorageError> {
+    ) -> Result<Self, super::StorageError> {
         let elem_size = std::mem::size_of::<T>();
         let file_size = capacity.checked_mul(elem_size).ok_or_else(|| {
-            StorageError::AllocationFailed("Capacity too large".to_string())
+            super::StorageError::AllocationFailed("Capacity too large".to_string())
         })?;
 
         let (file, path) = if let Some(path) = path {
@@ -40,11 +40,11 @@ impl<T> MmapStorage<T> {
                 .write(true)
                 .create(true)
                 .open(&path)
-                .map_err(|e| StorageError::IoError(e))?;
+                .map_err(|e| super::StorageError::IoError(e))?;
             
             // Set the file length
             file.set_len(file_size as u64)
-                .map_err(|e| StorageError::IoError(e))?;
+                .map_err(|e| super::StorageError::IoError(e))?;
                 
             (file, Some(path))
         } else {
@@ -56,10 +56,10 @@ impl<T> MmapStorage<T> {
                 .write(true)
                 .create(true)
                 .open(&path)
-                .map_err(|e| StorageError::IoError(e))?;
+                .map_err(|e| super::StorageError::IoError(e))?;
             
             file.set_len(file_size as u64)
-                .map_err(|e| StorageError::IoError(e))?;
+                .map_err(|e| super::StorageError::IoError(e))?;
                 
             (file, Some(path))
         };
@@ -69,7 +69,7 @@ impl<T> MmapStorage<T> {
             MmapOptions::new()
                 .len(file_size)
                 .map_mut(&file)
-                .map_err(|e| StorageError::IoError(e.into()))?
+                .map_err(|e| super::StorageError::IoError(e.into()))?
         };
 
         Ok(Self {
@@ -80,7 +80,7 @@ impl<T> MmapStorage<T> {
     }
 
     /// Creates a new memory-mapped storage from a vector.
-    pub fn from_vec(data: Vec<T>) -> Result<Self, StorageError> {
+    pub fn from_vec(data: Vec<T>) -> Result<Self, super::StorageError> {
         let len = data.len();
         let mut storage = Self::with_capacity(None, len)?;
         
@@ -95,80 +95,33 @@ impl<T> MmapStorage<T> {
 }
 
 impl<T: Clone + Send + Sync + 'static> Storage<T> for MmapStorage<T> {
-    fn with_capacity(capacity: usize) -> Result<Self, StorageError> {
-        Self::with_capacity(None, capacity)
-    }
-
-    fn from_vec(data: Vec<T>) -> Result<Self, StorageError> {
-        Self::from_vec(data)
-    }
-
     fn len(&self) -> usize {
         self.mmap.len() / std::mem::size_of::<T>()
     }
 
-    fn get(&self, index: usize) -> Option<&T> {
-        let byte_offset = index.checked_mul(std::mem::size_of::<T>())?;
-        let byte_slice = self.mmap.get(byte_offset..byte_offset + std::mem::size_of::<T>())?;
-        
-        // SAFETY: We ensure proper alignment and bounds checking above
-        unsafe {
-            Some(&*(byte_slice.as_ptr() as *const T))
-        }
+    fn is_empty(&self) -> bool {
+        self.mmap.is_empty()
     }
 
-    fn get_mut(&mut self, index: usize) -> Option<&mut T> {
-        let byte_offset = index.checked_mul(std::mem::size_of::<T>())?;
-        let byte_slice = self.mmap.get_mut(byte_offset..byte_offset + std::mem::size_of::<T>())?;
-        
-        // SAFETY: We ensure proper alignment and bounds checking above
+    fn as_slice(&self) -> &[T] {
         unsafe {
-            Some(&mut *(byte_slice.as_mut_ptr() as *mut T))
-        }
-    }
-
-    fn set(&mut self, index: usize, value: T) -> Result<(), StorageError> {
-        let byte_offset = index.checked_mul(std::mem::size_of::<T>())
-            .ok_or_else(|| StorageError::ShapeMismatch("Index out of bounds".to_string()))?;
-            
-        if byte_offset + std::mem::size_of::<T>() > self.mmap.len() {
-            return Err(StorageError::ShapeMismatch("Index out of bounds".to_string()));
-        }
-        
-        // SAFETY: We've checked the bounds above
-        unsafe {
-            let ptr = self.mmap.as_mut_ptr().add(byte_offset) as *mut T;
-            std::ptr::write(ptr, value);
-        }
-        
-        // Ensure the write is flushed to disk
-        self.mmap.flush_async()
-            .map_err(|e| StorageError::IoError(e.into()))?;
-            
-        Ok(())
-    }
-
-    fn to_vec(&self) -> Vec<T>
-    where
-        T: Clone,
-    {
-        let len = self.len();
-        let mut vec = Vec::with_capacity(len);
-        
-        // SAFETY: We know the memory is properly initialized
-        unsafe {
-            vec.set_len(len);
-            std::ptr::copy_nonoverlapping(
+            std::slice::from_raw_parts(
                 self.mmap.as_ptr() as *const T,
-                vec.as_mut_ptr(),
-                len,
-            );
+                self.len()
+            )
         }
-        
-        vec
     }
 
-    fn clone(&self) -> std::sync::Arc<dyn Storage<T>> {
+    fn as_mut_slice(&mut self) -> &mut [T] {
+        unsafe {
+            std::slice::from_raw_parts_mut(
+                self.mmap.as_mut_ptr() as *mut T,
+                self.len()
+            )
+        }
+    }
+
+    fn clone(&self) -> Box<dyn Storage<T>> {
         // Create a new memory-mapped file and copy the data
         let len = self.len();
         let new_storage = Self::with_capacity(None, len)
@@ -183,7 +136,7 @@ impl<T: Clone + Send + Sync + 'static> Storage<T> for MmapStorage<T> {
             );
         }
         
-        std::sync::Arc::new(new_storage)
+        Box::new(new_storage)
     }
 }
 

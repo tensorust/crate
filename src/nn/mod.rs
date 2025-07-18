@@ -52,7 +52,7 @@ where
         grad_output: &Tensor<T, Self::Output, S>,
     ) -> Result<(
         Tensor<T, Self::Input, S>,
-        Option<Vec<Tensor<T, crate::dimension::DynamicDim, S>>>,
+        Option<Vec<Tensor<T, crate::dimension::dynamic::DynamicDim, S>>>,
     )>;
 
     /// Get the trainable parameters of the layer, if any.
@@ -90,7 +90,7 @@ where
         &self,
         predictions: &Tensor<T, D, S>,
         targets: &Tensor<T, D, S>,
-    ) -> Result<Tensor<T, crate::dimension::StaticDim<0>, S>>;
+    ) -> Result<Tensor<T, crate::dimension::static_::StaticDim<0>, S>>;
     
     /// Compute the gradient of the loss with respect to the predictions.
     fn gradient(
@@ -107,10 +107,10 @@ where
     S: Storage<T>,
 {
     /// Update the parameters using their gradients.
-    fn step(&mut self, parameters: &[&mut Tensor<T, crate::dimension::DynamicDim, S>]);
+    fn step(&mut self, parameters: &[&mut Tensor<T, crate::dimension::dynamic::DynamicDim, S>]);
     
     /// Zero out the gradients of the parameters.
-    fn zero_grad(&self, parameters: &[&mut Tensor<T, crate::dimension::DynamicDim, S>]);
+    fn zero_grad(&self, parameters: &[&mut Tensor<T, crate::dimension::dynamic::DynamicDim, S>]);
 }
 
 /// A sequential container for layers.
@@ -159,7 +159,7 @@ where
         input: &Tensor<T, D, S>,
         output: &Tensor<T, D, S>,
         grad_output: &Tensor<T, D, S>,
-    ) -> Result<(Tensor<T, D, S>, Vec<Vec<Tensor<T, crate::dimension::DynamicDim, S>>>)> {
+    ) -> Result<(Tensor<T, D, S>, Option<Vec<Vec<Tensor<T, crate::dimension::dynamic::DynamicDim, S>>>>)> {
         let mut grad_input = grad_output.clone();
         let mut param_grads = Vec::new();
         
@@ -193,7 +193,7 @@ where
         // Reverse to match layer order
         param_grads.reverse();
         
-        Ok((grad_input, param_grads))
+        Ok((grad_input, Some(param_grads)))
     }
     
     /// Get all trainable parameters from all layers.

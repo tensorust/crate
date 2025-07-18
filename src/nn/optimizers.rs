@@ -63,13 +63,7 @@ where
     S: Storage<T>,
 {
     /// Update the parameters.
-    fn update(&mut self, param: &mut Tensor<T, crate::dimension::DynamicDim, S>);
-    
-    /// Get the state as a trait object.
-    fn as_any(&self) -> &dyn Any;
-    
-    /// Get the state as a mutable trait object.
-    fn as_any_mut(&mut self) -> &mut dyn Any;
+    fn update(&mut self, param: &mut Tensor<T, crate::dimension::dynamic::DynamicDim, S>);
 }
 
 /// SGD (Stochastic Gradient Descent) optimizer state.
@@ -80,7 +74,7 @@ struct SgdState<T, S> {
     /// The momentum factor.
     momentum: T,
     /// The velocity for momentum.
-    velocity: Option<Tensor<T, crate::dimension::DynamicDim, S>>,
+    velocity: Option<Tensor<T, crate::dimension::dynamic::DynamicDim, S>>,
     /// The weight decay factor.
     weight_decay: T,
     /// Whether to use Nesterov momentum.
@@ -113,7 +107,7 @@ where
     T: std::ops::Add<Output = T> + std::ops::Mul<Output = T> + std::ops::Sub<Output = T>,
     for<'a> &'a T: std::ops::Mul<Output = T> + std::ops::Add<Output = T>,
 {
-    fn update(&mut self, param: &mut Tensor<T, crate::dimension::DynamicDim, S>) {
+    fn update(&mut self, param: &mut Tensor<T, crate::dimension::dynamic::DynamicDim, S>) {
         // Apply weight decay
         if self.weight_decay != T::default() {
             // param = param - lr * weight_decay * param
@@ -142,14 +136,6 @@ where
             // param = param - lr * velocity
             *param = (&*param - &(*velocity * &self.lr)).unwrap();
         }
-    }
-    
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-    
-    fn as_any_mut(&mut self) -> &mut dyn Any {
-        self
     }
 }
 
@@ -207,7 +193,7 @@ where
     for<'a> &'a T: std::ops::Mul<Output = T> + std::ops::Add<Output = T>,
     f32: From<T>,
 {
-    fn update(&mut self, param: &mut Tensor<T, crate::dimension::DynamicDim, S>) {
+    fn update(&mut self, param: &mut Tensor<T, crate::dimension::dynamic::DynamicDim, S>) {
         // Increment timestep
         self.t += 1;
         
@@ -244,14 +230,6 @@ where
         // Update parameters
         let update = &m_hat / (v_hat.sqrt() + &self.eps);
         *param = (&*param - &(update * &self.lr)).unwrap();
-    }
-    
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-    
-    fn as_any_mut(&mut self) -> &mut dyn Any {
-        self
     }
 }
 
@@ -310,7 +288,7 @@ where
     T: std::ops::Sub<Output = T>,
     for<'a> &'a T: std::ops::Mul<Output = T> + std::ops::Add<Output = T>,
 {
-    fn update(&mut self, param: &mut Tensor<T, crate::dimension::DynamicDim, S>) {
+    fn update(&mut self, param: &mut Tensor<T, crate::dimension::dynamic::DynamicDim, S>) {
         // Apply weight decay
         if self.weight_decay != T::default() {
             param.grad_mut().map(|g| *g = &*g + &(param * &self.weight_decay));
@@ -356,14 +334,6 @@ where
             *param = (&*param - &(update * &self.lr)).unwrap();
         }
     }
-    
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-    
-    fn as_any_mut(&mut self) -> &mut dyn Any {
-        self
-    }
 }
 
 /// Adagrad optimizer state.
@@ -404,7 +374,7 @@ where
     T: std::ops::Add<Output = T> + std::ops::Div<Output = T>,
     for<'a> &'a T: std::ops::Mul<Output = T> + std::ops::Add<Output = T>,
 {
-    fn update(&mut self, param: &mut Tensor<T, crate::dimension::DynamicDim, S>) {
+    fn update(&mut self, param: &mut Tensor<T, crate::dimension::dynamic::DynamicDim, S>) {
         // Apply weight decay
         if self.weight_decay != T::default() {
             param.grad_mut().map(|g| *g = &*g + &(param * &self.weight_decay));
@@ -425,14 +395,6 @@ where
         // Update parameters
         let std = sum.sqrt() + &self.eps;
         *param = (&*param - &(grad / std * &self.lr)).unwrap();
-    }
-    
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-    
-    fn as_any_mut(&mut self) -> &mut dyn Any {
-        self
     }
 }
 
@@ -567,9 +529,9 @@ where
     }
     
     /// Update the parameters using the stored state.
-    pub fn step(&mut self, params: &mut [&mut Tensor<T, crate::dimension::DynamicDim, S>]) -> Result<()> {
+    pub fn step(&mut self, params: &mut [&mut Tensor<T, crate::dimension::dynamic::DynamicDim, S>]) -> Result<()> {
         for (i, param) in params.iter_mut().enumerate() {
-            if let Some(state) = self.state_mut(i) {
+            if let Some(state) = self.states.get_mut(&i) {
                 state.update(*param);
             } else {
                 // If no state exists, use SGD with default parameters
@@ -587,7 +549,7 @@ where
     }
     
     /// Zero out the gradients of the parameters.
-    pub fn zero_grad(&self, params: &mut [&mut Tensor<T, crate::dimension::DynamicDim, S>]) -> Result<()> {
+    pub fn zero_grad(&self, params: &mut [&mut Tensor<T, crate::dimension::dynamic::DynamicDim, S>]) -> Result<()> {
         for param in params {
             param.zero_grad();
         }

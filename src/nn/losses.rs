@@ -6,10 +6,10 @@ use crate::{
     storage::Storage,
     error::Result,
     ops::{
-        mse_loss, mse_loss_grad, cross_entropy_loss, cross_entropy_loss_grad,
-        binary_cross_entropy_loss, binary_cross_entropy_loss_grad,
-        l1_loss, l1_loss_grad, smooth_l1_loss, smooth_l1_loss_grad,
-        kl_div_loss, kl_div_loss_grad, nll_loss, nll_loss_grad,
+        mse_loss_grad, cross_entropy_loss_grad,
+        binary_cross_entropy_loss_grad,
+        l1_loss_grad, smooth_l1_loss_grad,
+        kl_div_loss_grad, nll_loss_grad,
     },
 };
 use std::fmt;
@@ -58,7 +58,7 @@ where
         &self,
         predictions: &Tensor<T, D, S>,
         targets: &Tensor<T, D, S>,
-    ) -> Result<Tensor<T, crate::dimension::StaticDim<0>, S>> {
+    ) -> Result<Tensor<T, crate::dimension::static_::StaticDim<0>, S>> {
         mse_loss(predictions, targets, self.reduction)
     }
     
@@ -154,7 +154,7 @@ where
         &self,
         predictions: &Tensor<T, D, S>,
         targets: &Tensor<T, D, S>,
-    ) -> Result<Tensor<T, crate::dimension::StaticDim<0>, S>> {
+    ) -> Result<Tensor<T, crate::dimension::static_::StaticDim<0>, S>> {
         cross_entropy_loss(
             predictions,
             targets,
@@ -247,7 +247,7 @@ where
         &self,
         predictions: &Tensor<T, D, S>,
         targets: &Tensor<T, D, S>,
-    ) -> Result<Tensor<T, crate::dimension::StaticDim<0>, S>> {
+    ) -> Result<Tensor<T, crate::dimension::static_::StaticDim<0>, S>> {
         let weight = self.weight.map(|w| T::from(w));
         binary_cross_entropy_loss(predictions, targets, self.reduction, weight.as_ref())
     }
@@ -306,7 +306,7 @@ where
         &self,
         predictions: &Tensor<T, D, S>,
         targets: &Tensor<T, D, S>,
-    ) -> Result<Tensor<T, crate::dimension::StaticDim<0>, S>> {
+    ) -> Result<Tensor<T, crate::dimension::static_::StaticDim<0>, S>> {
         l1_loss(predictions, targets, self.reduction)
     }
     
@@ -384,7 +384,7 @@ where
         &self,
         predictions: &Tensor<T, D, S>,
         targets: &Tensor<T, D, S>,
-    ) -> Result<Tensor<T, crate::dimension::StaticDim<0>, S>> {
+    ) -> Result<Tensor<T, crate::dimension::static_::StaticDim<0>, S>> {
         smooth_l1_loss(predictions, targets, self.reduction, self.beta.into())
     }
     
@@ -450,7 +450,7 @@ where
         &self,
         predictions: &Tensor<T, D, S>,
         targets: &Tensor<T, D, S>,
-    ) -> Result<Tensor<T, crate::dimension::StaticDim<0>, S>> {
+    ) -> Result<Tensor<T, crate::dimension::static_::StaticDim<0>, S>> {
         kl_div_loss(predictions, targets, self.reduction, self.log_target)
     }
     
@@ -546,7 +546,7 @@ where
         &self,
         predictions: &Tensor<T, D, S>,
         targets: &Tensor<T, D, S>,
-    ) -> Result<Tensor<T, crate::dimension::StaticDim<0>, S>> {
+    ) -> Result<Tensor<T, crate::dimension::static_::StaticDim<0>, S>> {
         let weight = self.weight.map(|w| T::from(w));
         nll_loss(
             predictions,
@@ -605,55 +605,27 @@ impl<L> LossFunc<L> {
     }
 }
 
-impl<T, D, S, L> crate::nn::Layer<T, D, S> for LossFunc<L>
+impl<T, D, S, L> LossFunc<L>
 where
     T: Clone + Default + Send + Sync + 'static,
     D: Dimension,
     S: Storage<T>,
     L: crate::nn::Loss<T, D, S> + 'static,
 {
-    type Input = D;
-    type Output = crate::dimension::StaticDim<0>;
-
-    fn forward(&self, input: &Tensor<T, Self::Input, S>) -> Result<Tensor<T, Self::Output, S>> {
-        // The target should be provided separately
-        // For now, we'll just return a zero tensor
-        Tensor::zeros([])
-    }
-    
-    fn backward(
-        &self,
-        _input: &Tensor<T, Self::Input, S>,
-        _output: &Tensor<T, Self::Output, S>,
-        _grad_output: &Tensor<T, Self::Output, S>,
-    ) -> Result<(
-        Tensor<T, Self::Input, S>,
-        Option<Vec<Tensor<T, crate::dimension::DynamicDim, S>>>,
-    )> {
-        // The backward pass should be handled by the loss function
-        // For now, we'll just return zeros
-        Ok((Tensor::zeros_like(_input)?, None))
-    }
-    
-    fn parameters(&self) -> Vec<&dyn std::any::Any> {
-        // Loss functions have no trainable parameters
-        Vec::new()
-    }
-    
     /// Compute the loss between the predictions and targets.
-    pub fn compute(
+    pub fn compute<'a>(
         &self,
-        predictions: &Tensor<T, D, S>,
-        targets: &Tensor<T, D, S>,
-    ) -> Result<Tensor<T, crate::dimension::StaticDim<0>, S>> {
+        predictions: &'a Tensor<T, D, S>,
+        targets: &'a Tensor<T, D, S>,
+    ) -> Result<Tensor<T, crate::dimension::static_::StaticDim<0>, S>> {
         self.loss.compute(predictions, targets)
     }
     
     /// Compute the gradient of the loss with respect to the predictions.
-    pub fn gradient(
+    pub fn gradient<'a>(
         &self,
-        predictions: &Tensor<T, D, S>,
-        targets: &Tensor<T, D, S>,
+        predictions: &'a Tensor<T, D, S>,
+        targets: &'a Tensor<T, D, S>,
     ) -> Result<Tensor<T, D, S>> {
         self.loss.gradient(predictions, targets)
     }

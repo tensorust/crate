@@ -7,7 +7,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use crate::error::Result;
 use crate::tensor::Tensor;
-use super::{Expr, ExprNode};
+use super::Expr;
 
 /// A trait for evaluating expression graphs.
 pub trait Evaluate {
@@ -18,7 +18,7 @@ pub trait Evaluate {
 /// An evaluator for expression graphs.
 #[derive(Default)]
 pub struct Evaluator {
-    cache: HashMap<usize, Tensor>,
+    cache: HashMap<usize, crate::tensor::Tensor>,
 }
 
 impl Evaluator {
@@ -30,8 +30,8 @@ impl Evaluator {
     }
     
     /// Evaluates an expression node.
-    pub fn eval(&mut self, expr: &Expr) -> Result<Tensor> {
-        let expr_ptr = expr.as_ref() as *const dyn ExprNode as *const () as usize;
+    pub fn eval(&mut self, expr: &Expr) -> Result<crate::tensor::Tensor> {
+        let expr_ptr = Arc::as_ptr(expr) as *const () as usize;
         
         // Check if the result is already in the cache
         if let Some(result) = self.cache.get(&expr_ptr) {
@@ -39,13 +39,13 @@ impl Evaluator {
         }
         
         // Evaluate child nodes
-        let child_results: Vec<Tensor> = expr.children()
+        let child_results: Vec<crate::tensor::Tensor> = expr.children()
             .iter()
-            .map(|child| self.eval(&Arc::from(*child)))
+            .map(|child| self.eval(&child))
             .collect::<Result<_>>()?;
         
         // Convert child results to references for the eval method
-        let child_refs: Vec<&Tensor> = child_results.iter().collect();
+        let child_refs: Vec<&crate::tensor::Tensor> = child_results.iter().collect();
         
         // Evaluate the current node
         let result = expr.eval(&child_refs)?;
@@ -63,7 +63,7 @@ impl Evaluator {
 }
 
 impl Evaluate for Expr {
-    fn eval(&self, inputs: &[&Tensor]) -> Result<Tensor> {
+    fn eval(&self, inputs: &[&crate::tensor::Tensor]) -> Result<crate::tensor::Tensor> {
         let mut evaluator = Evaluator::new();
         evaluator.eval(self)
     }
@@ -72,14 +72,15 @@ impl Evaluate for Expr {
 /// A trait for computing gradients of expressions.
 pub trait Differentiate {
     /// Computes the gradient of the expression with respect to the given inputs.
-    fn grad(&self, inputs: &[&Tensor], grad_output: &Tensor) -> Result<Vec<Tensor>>;
+    fn grad(&self, inputs: &[&crate::tensor::Tensor], grad_output: &crate::tensor::Tensor) -> Result<Vec<crate::tensor::Tensor>>;
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::tensor::Tensor;
-    use super::super::nodes::*;
+    use crate::expression::nodes::*;
+    use crate::expression::ExprBuilder;
     
     #[test]
     fn test_evaluator() {

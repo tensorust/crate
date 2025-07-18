@@ -1,8 +1,8 @@
 //! Fully connected (Dense) layer implementation.
 
 use crate::{
-    autodiff::{tensor::Tensor, ComputationGraph, DifferentiableOp, Node},
-    tensor::Tensor as BaseTensor,
+    autodiff::{Node},
+    tensor::Tensor,
 };
 use std::sync::Arc;
 
@@ -21,7 +21,7 @@ pub struct DenseLayer {
     bias: Arc<Node>,
     
     /// Activation function (e.g., ReLU, Sigmoid, etc.)
-    activation: Option<Arc<dyn DifferentiableOp>>,
+    activation: Option<Arc<dyn Fn(Arc<Node>) -> Arc<Node>>>,
     
     /// Input dimension
     input_dim: usize,
@@ -45,25 +45,24 @@ impl DenseLayer {
     /// * `weight_init` - Initializer for the weight matrix
     /// * `bias_init` - Initializer for the bias vector
     pub fn new(
-        graph: &mut ComputationGraph,
         input_dim: usize,
         output_dim: usize,
-        activation: Option<Arc<dyn DifferentiableOp>>,
+        activation: Option<Arc<dyn Fn(Arc<Node>) -> Arc<Node>>>,
         use_bias: bool,
-        weight_init: impl Fn(&[usize]) -> BaseTensor,
-        bias_init: impl Fn(&[usize]) -> BaseTensor,
+        weight_init: impl Fn(&[usize]) -> Tensor,
+        bias_init: impl Fn(&[usize]) -> Tensor,
     ) -> Self {
         // Initialize weights
         let weights_data = weight_init(&[input_dim, output_dim]);
-        let weights = graph.add_tensor(weights_data, true);
+        let weights = Arc::new(Node::new_leaf(weights_data));
         
         // Initialize bias if needed
         let bias = if use_bias {
             let bias_data = bias_init(&[output_dim]);
-            graph.add_tensor(bias_data, true)
+            Arc::new(Node::new_leaf(bias_data))
         } else {
             // Add a zero bias that won't be used
-            graph.add_tensor(BaseTensor::zeros(&[output_dim]).unwrap(), false)
+            Arc::new(Node::new_leaf(Tensor::zeros(&[output_dim]).unwrap()))
         };
         
         Self {
@@ -79,41 +78,27 @@ impl DenseLayer {
     /// Applies the layer to the input tensor.
     ///
     /// # Arguments
-    /// * `graph` - The computation graph
     /// * `input` - Input tensor of shape [batch_size, input_dim]
     ///
     /// # Returns
     /// Output tensor of shape [batch_size, output_dim]
     pub fn forward(
         &self,
-        graph: &mut ComputationGraph,
         input: Arc<Node>,
     ) -> Result<Arc<Node>, Box<dyn std::error::Error>> {
         // Matrix multiplication: input @ weights
-        let output = graph.add_op(
-            Arc::new(MatMulOp),
-            &[input, self.weights.clone()],
-            true,
-        )?;
+        let output = input.matmul(self.weights.clone())?;
         
         // Add bias if needed
         let output = if self.use_bias {
-            graph.add_op(
-                Arc::new(AddOp),
-                &[output, self.bias.clone()],
-                true,
-            )?
+            output.add(self.bias.clone())?
         } else {
             output
         };
         
         // Apply activation if specified
         if let Some(activation) = &self.activation {
-            graph.add_op(
-                activation.clone(),
-                &[output],
-                true,
-            )
+            Ok(activation(output))
         } else {
             Ok(output)
         }
@@ -148,45 +133,42 @@ impl DenseLayer {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::autodiff::ops::{ReLUOp, AddOp, MatMulOp};
+    use crate::autodiff::ops::{ReLUOp};
     use approx::assert_relative_eq;
     
     #[test]
     fn test_dense_layer_forward() -> Result<(), Box<dyn std::error::Error>> {
-        let mut graph = ComputationGraph::new();
-        
         // Create a dense layer with known weights
         let input_dim = 3;
         let output_dim = 2;
         
         // Initialize weights and bias with known values
-        let weights_data = BaseTensor::from_slice(
+        let weights_data = Tensor::from_slice(
             &[1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
-            &[input_dim, output_dim],
+            vec![input_dim, output_dim],
         )?;
         
-        let bias_data = BaseTensor::from_slice(&[0.1, 0.2], &[output_dim])?;
+        let bias_data = Tensor::from_slice(&[0.1, 0.2], vec![output_dim])?;
         
         let layer = DenseLayer::new(
-            &mut graph,
             input_dim,
             output_dim,
-            Some(Arc::new(ReLUOp)),
+            Some(Arc::new(|x| x.relu())),
             true,
             |_| weights_data.clone(),
             |_| bias_data.clone(),
         );
         
         // Create input tensor
-        let input_data = BaseTensor::from_slice(
+        let input_data = Tensor::from_slice(
             &[1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
-            &[2, input_dim],  // batch_size=2, input_dim=3
+            vec![2, input_dim],  // batch_size=2, input_dim=3
         )?;
         
-        let input = graph.add_tensor(input_data, false);
+        let input = Arc::new(Node::new_leaf(input_data));
         
         // Forward pass
-        let output = layer.forward(&mut graph, input)?;
+        let output = layer.forward(input)?;
         
         // Expected output:
         // For first sample: [1, 2, 3] @ [[1, 4], [2, 5], [3, 6]] + [0.1, 0.2] = [14.1, 32.2]
@@ -206,40 +188,32 @@ mod tests {
     
     #[test]
     fn test_dense_layer_backward() -> Result<(), Box<dyn std::error::Error>> {
-        let mut graph = ComputationGraph::new();
-        
         // Create a dense layer with random initialization
         let input_dim = 3;
         let output_dim = 2;
         
         let layer = DenseLayer::new(
-            &mut graph,
             input_dim,
             output_dim,
-            Some(Arc::new(ReLUOp)),
+            Some(Arc::new(|x| x.relu())),
             true,
-            |shape| BaseTensor::randn(shape, 0.0, 0.01),
-            |shape| BaseTensor::zeros(shape).unwrap(),
+            |shape| Tensor::randn(shape, 0.0, 0.01),
+            |shape| Tensor::zeros(shape).unwrap(),
         );
         
         // Create input tensor
         let batch_size = 4;
-        let input_data = BaseTensor::randn(&[batch_size, input_dim], 0.0, 1.0);
-        let input = graph.add_tensor(input_data, true);
+        let input_data = Tensor::randn(&[batch_size, input_dim], 0.0, 1.0);
+        let input = Arc::new(Node::new_leaf(input_data));
         
         // Forward pass
-        let output = layer.forward(&mut graph, input.clone())?;
+        let output = layer.forward(input.clone())?;
         
         // Create a dummy loss (sum of outputs)
-        let ones = graph.add_tensor(BaseTensor::ones(&[batch_size, output_dim])?, false);
-        let loss = graph.add_op(
-            Arc::new(MatMulOp),
-            &[output, ones],
-            true,
-        )?;
+        let loss = output.sum();
         
         // Backward pass
-        graph.backward(&loss)?;
+        loss.backward();
         
         // Check gradients
         assert!(layer.weights().gradient.is_some(), "Weights gradient should be computed");

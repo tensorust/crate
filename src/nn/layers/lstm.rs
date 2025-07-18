@@ -4,8 +4,8 @@
 //! that can learn long-term dependencies in sequential data.
 
 use crate::{
-    autodiff::{tensor::Tensor, ComputationGraph, DifferentiableOp, Node},
-    tensor::Tensor as BaseTensor,
+    autodiff::{Node},
+    tensor::Tensor,
 };
 use std::sync::Arc;
 
@@ -59,7 +59,6 @@ impl LSTMCell {
     /// * `weight_init` - Function to initialize weights
     /// * `bias_init` - Function to initialize biases
     pub fn new<F, G>(
-        graph: &mut ComputationGraph,
         input_size: usize,
         hidden_size: usize,
         use_bias: bool,
@@ -67,62 +66,32 @@ impl LSTMCell {
         bias_init: G,
     ) -> Self
     where
-        F: Fn(&[usize]) -> BaseTensor,
-        G: Fn(&[usize]) -> BaseTensor,
+        F: Fn(&[usize]) -> Tensor,
+        G: Fn(&[usize]) -> Tensor,
     {
         // Initialize input weights
-        let w_ii = graph.add_tensor(
-            weight_init(&[input_size, hidden_size]),
-            true,
-        );
-        
-        let w_if = graph.add_tensor(
-            weight_init(&[input_size, hidden_size]),
-            true,
-        );
-        
-        let w_ig = graph.add_tensor(
-            weight_init(&[input_size, hidden_size]),
-            true,
-        );
-        
-        let w_io = graph.add_tensor(
-            weight_init(&[input_size, hidden_size]),
-            true,
-        );
+        let w_ii = Arc::new(Node::new_leaf(weight_init(&[input_size, hidden_size])));
+        let w_if = Arc::new(Node::new_leaf(weight_init(&[input_size, hidden_size])));
+        let w_ig = Arc::new(Node::new_leaf(weight_init(&[input_size, hidden_size])));
+        let w_io = Arc::new(Node::new_leaf(weight_init(&[input_size, hidden_size])));
         
         // Initialize hidden weights
-        let w_hi = graph.add_tensor(
-            weight_init(&[hidden_size, hidden_size]),
-            true,
-        );
-        
-        let w_hf = graph.add_tensor(
-            weight_init(&[hidden_size, hidden_size]),
-            true,
-        );
-        
-        let w_hg = graph.add_tensor(
-            weight_init(&[hidden_size, hidden_size]),
-            true,
-        );
-        
-        let w_ho = graph.add_tensor(
-            weight_init(&[hidden_size, hidden_size]),
-            true,
-        );
+        let w_hi = Arc::new(Node::new_leaf(weight_init(&[hidden_size, hidden_size])));
+        let w_hf = Arc::new(Node::new_leaf(weight_init(&[hidden_size, hidden_size])));
+        let w_hg = Arc::new(Node::new_leaf(weight_init(&[hidden_size, hidden_size])));
+        let w_ho = Arc::new(Node::new_leaf(weight_init(&[hidden_size, hidden_size])));
         
         // Initialize biases if needed
         let (b_ii, b_if, b_ig, b_io, b_hi, b_hf, b_hg, b_ho) = if use_bias {
             (
-                Some(graph.add_tensor(bias_init(&[hidden_size]), true)),
-                Some(graph.add_tensor(bias_init(&[hidden_size]), true)),
-                Some(graph.add_tensor(bias_init(&[hidden_size]), true)),
-                Some(graph.add_tensor(bias_init(&[hidden_size]), true)),
-                Some(graph.add_tensor(bias_init(&[hidden_size]), true)),
-                Some(graph.add_tensor(bias_init(&[hidden_size]), true)),
-                Some(graph.add_tensor(bias_init(&[hidden_size]), true)),
-                Some(graph.add_tensor(bias_init(&[hidden_size]), true)),
+                Some(Arc::new(Node::new_leaf(bias_init(&[hidden_size])))),
+                Some(Arc::new(Node::new_leaf(bias_init(&[hidden_size])))),
+                Some(Arc::new(Node::new_leaf(bias_init(&[hidden_size])))),
+                Some(Arc::new(Node::new_leaf(bias_init(&[hidden_size])))),
+                Some(Arc::new(Node::new_leaf(bias_init(&[hidden_size])))),
+                Some(Arc::new(Node::new_leaf(bias_init(&[hidden_size])))),
+                Some(Arc::new(Node::new_leaf(bias_init(&[hidden_size])))),
+                Some(Arc::new(Node::new_leaf(bias_init(&[hidden_size])))),
             )
         } else {
             (None, None, None, None, None, None, None, None)
@@ -142,7 +111,6 @@ impl LSTMCell {
     /// Applies the LSTM cell to a single time step.
     /// 
     /// # Arguments
-    /// * `graph` - The computation graph
     /// * `x_t` - Input at time step t [batch_size, input_size]
     /// * `h_prev` - Previous hidden state [batch_size, hidden_size]
     /// * `c_prev` - Previous cell state [batch_size, hidden_size]
@@ -153,153 +121,85 @@ impl LSTMCell {
     /// - New cell state [batch_size, hidden_size]
     pub fn step(
         &self,
-        graph: &mut ComputationGraph,
         x_t: Arc<Node>,
         h_prev: Arc<Node>,
         c_prev: Arc<Node>,
     ) -> Result<(Arc<Node>, Arc<Node>), Box<dyn std::error::Error>> {
         // Input gate: i_t = σ(W_ii x_t + b_ii + W_hi h_{t-1} + b_hi)
         let i_t = self.gate_forward(
-            graph, &x_t, &h_prev,
+            &x_t, &h_prev,
             &self.w_ii, &self.w_hi,
             self.b_ii.as_ref(), self.b_hi.as_ref(),
-            true, // sigmoid
+            |x| x.sigmoid(),
         )?;
         
         // Forget gate: f_t = σ(W_if x_t + b_if + W_hf h_{t-1} + b_hf)
         let f_t = self.gate_forward(
-            graph, &x_t, &h_prev,
+            &x_t, &h_prev,
             &self.w_if, &self.w_hf,
             self.b_if.as_ref(), self.b_hf.as_ref(),
-            true, // sigmoid
+            |x| x.sigmoid(),
         )?;
         
         // Cell gate: g_t = tanh(W_ig x_t + b_ig + W_hg h_{t-1} + b_hg)
         let g_t = self.gate_forward(
-            graph, &x_t, &h_prev,
+            &x_t, &h_prev,
             &self.w_ig, &self.w_hg,
             self.b_ig.as_ref(), self.b_hg.as_ref(),
-            false, // tanh
+            |x| x.tanh(),
         )?;
         
         // Output gate: o_t = σ(W_io x_t + b_io + W_ho h_{t-1} + b_ho)
         let o_t = self.gate_forward(
-            graph, &x_t, &h_prev,
+            &x_t, &h_prev,
             &self.w_io, &self.w_ho,
             self.b_io.as_ref(), self.b_ho.as_ref(),
-            true, // sigmoid
+            |x| x.sigmoid(),
         )?;
         
         // Cell state: c_t = f_t * c_{t-1} + i_t * g_t
-        let f_c = graph.add_op(
-            Arc::new(MultiplyOp),
-            &[f_t, c_prev],
-            true,
-        )?;
-        
-        let i_g = graph.add_op(
-            Arc::new(MultiplyOp),
-            &[i_t, g_t],
-            true,
-        )?;
-        
-        let c_t = graph.add_op(
-            Arc::new(AddOp),
-            &[f_c, i_g],
-            true,
-        )?;
+        let f_c = f_t.mul(c_prev)?;
+        let i_g = i_t.mul(g_t)?;
+        let c_t = f_c.add(i_g)?;
         
         // Hidden state: h_t = o_t * tanh(c_t)
-        let c_t_tanh = graph.add_op(
-            Arc::new(TanhOp),
-            &[c_t.clone()],
-            true,
-        )?;
-        
-        let h_t = graph.add_op(
-            Arc::new(MultiplyOp),
-            &[o_t, c_t_tanh],
-            true,
-        )?;
+        let c_t_tanh = c_t.tanh();
+        let h_t = o_t.mul(c_t_tanh)?;
         
         Ok((h_t, c_t))
     }
     
     /// Helper function to compute a single gate's output.
-    fn gate_forward(
+    fn gate_forward<F>(
         &self,
-        graph: &mut ComputationGraph,
         x_t: &Arc<Node>,
         h_prev: &Arc<Node>,
         w_x: &Arc<Node>,
         w_h: &Arc<Node>,
         b_x: Option<&Arc<Node>>,
         b_h: Option<&Arc<Node>>,
-        use_sigmoid: bool,
-    ) -> Result<Arc<Node>, Box<dyn std::error::Error>> {
+        activation: F,
+    ) -> Result<Arc<Node>, Box<dyn std::error::Error>>
+    where
+        F: Fn(Arc<Node>) -> Arc<Node>,
+    {
         // Linear transformation for input
-        let x_out = graph.add_op(
-            Arc::new(MatMulOp),
-            &[x_t.clone(), w_x.clone()],
-            true,
-        )?;
+        let x_out = x_t.matmul(w_x.clone())?;
         
         // Linear transformation for hidden state
-        let h_out = graph.add_op(
-            Arc::new(MatMulOp),
-            &[h_prev.clone(), w_h.clone()],
-            true,
-        )?;
+        let h_out = h_prev.matmul(w_h.clone())?;
         
         // Sum the transformations
-        let mut sum = graph.add_op(
-            Arc::new(AddOp),
-            &[x_out, h_out],
-            true,
-        )?;
+        let mut sum = x_out.add(h_out)?;
         
         // Add biases if they exist
         if let (Some(bx), Some(bh)) = (b_x, b_h) {
-            // Broadcast bias to match batch size
-            let bx_broadcast = graph.add_op(
-                Arc::new(ExpandOp::new(vec![0, self.hidden_size])),
-                &[bx.clone()],
-                true,
-            )?;
-            
-            let bh_broadcast = graph.add_op(
-                Arc::new(ExpandOp::new(vec![0, self.hidden_size])),
-                &[bh.clone()],
-                true,
-            )?;
-            
-            sum = graph.add_op(
-                Arc::new(AddOp),
-                &[sum, bx_broadcast],
-                true,
-            )?;
-            
-            sum = graph.add_op(
-                Arc::new(AddOp),
-                &[sum, bh_broadcast],
-                true,
-            )?;
+            sum = sum.add(bx.clone())?;
+            sum = sum.add(bh.clone())?;
         }
         
         // Apply activation function
-        if use_sigmoid {
-            graph.add_op(
-                Arc::new(SigmoidOp),
-                &[sum],
-                true,
-            )
-        } else {
-            graph.add_op(
-                Arc::new(TanhOp),
-                &[sum],
-                true,
-            )
-        }
+        Ok(activation(sum))
     }
     
     /// Returns the input size.
@@ -361,7 +261,6 @@ impl LSTM {
     /// * `weight_init` - Function to initialize weights
     /// * `bias_init` - Function to initialize biases
     pub fn new<F, G>(
-        graph: &mut ComputationGraph,
         input_size: usize,
         hidden_size: usize,
         num_layers: usize,
@@ -373,14 +272,13 @@ impl LSTM {
         bias_init: G,
     ) -> Self
     where
-        F: Fn(&[usize]) -> BaseTensor + Copy,
-        G: Fn(&[usize]) -> BaseTensor + Copy,
+        F: Fn(&[usize]) -> Tensor + Copy,
+        G: Fn(&[usize]) -> Tensor + Copy,
     {
         let mut cells = Vec::with_capacity(num_layers);
         
         // Create the first layer
         cells.push(LSTMCell::new(
-            graph,
             input_size,
             hidden_size,
             use_bias,
@@ -391,7 +289,6 @@ impl LSTM {
         // Create subsequent layers
         for _ in 1..num_layers {
             cells.push(LSTMCell::new(
-                graph,
                 hidden_size,  // Input size is hidden_size for deeper layers
                 hidden_size,
                 use_bias,
@@ -414,7 +311,6 @@ impl LSTM {
     /// Applies the LSTM to an input sequence.
     /// 
     /// # Arguments
-    /// * `graph` - The computation graph
     /// * `inputs` - Input sequence of shape [batch_size, seq_len, input_size]
     /// * `initial_states` - Optional initial hidden and cell states for each layer
     ///
@@ -425,7 +321,6 @@ impl LSTM {
     /// - The final cell states if return_cell_state is true
     pub fn forward(
         &self,
-        graph: &mut ComputationGraph,
         inputs: Arc<Node>,
         initial_states: Option<(Vec<Arc<Node>>, Vec<Arc<Node>>)>,
     ) -> Result<(Option<Arc<Node>>, Option<Vec<Arc<Node>>>, Option<Vec<Arc<Node>>>), Box<dyn std::error::Error>> {
@@ -439,19 +334,13 @@ impl LSTM {
         } else {
             let h: Vec<_> = (0..self.num_layers)
                 .map(|_| {
-                    graph.add_tensor(
-                        BaseTensor::zeros(&[batch_size, self.hidden_size]).unwrap(),
-                        false,
-                    )
+                    Arc::new(Node::new_leaf(Tensor::zeros(&[batch_size, self.hidden_size]).unwrap()))
                 })
                 .collect();
                 
             let c: Vec<_> = (0..self.num_layers)
                 .map(|_| {
-                    graph.add_tensor(
-                        BaseTensor::zeros(&[batch_size, self.hidden_size]).unwrap(),
-                        false,
-                    )
+                    Arc::new(Node::new_leaf(Tensor::zeros(&[batch_size, self.hidden_size]).unwrap()))
                 })
                 .collect();
                 
@@ -459,22 +348,14 @@ impl LSTM {
         };
         
         // Transpose inputs to [seq_len, batch_size, input_size] for easier iteration
-        let inputs_transposed = graph.add_op(
-            Arc::new(PermuteOp::new(vec![1, 0, 2])),
-            &[inputs],
-            true,
-        )?;
+        let inputs_transposed = inputs.permute(&[1, 0, 2])?;
         
         let mut outputs = Vec::with_capacity(seq_len);
         
         // Process each time step
         for t in 0..seq_len {
             // Get input at time step t [batch_size, input_size]
-            let x_t = graph.add_op(
-                Arc::new(IndexOp::new(0, t)),
-                &[inputs_transposed.clone()],
-                true,
-            )?;
+            let x_t = inputs_transposed.slice(vec![(Some(t), Some(t+1), 1)])?;
             
             // Process through each layer
             let mut h_t = x_t;
@@ -487,7 +368,6 @@ impl LSTM {
                 
                 // Apply LSTM cell
                 let (h_t_layer, c_t_layer) = cell.step(
-                    graph,
                     h_t,
                     h_prev_layer,
                     c_prev_layer,
@@ -509,18 +389,10 @@ impl LSTM {
         // Prepare outputs
         let output_sequence = if self.return_sequences {
             // Stack outputs along time dimension [seq_len, batch_size, hidden_size]
-            let stacked = graph.add_op(
-                Arc::new(StackOp::new(0)),
-                &outputs,
-                true,
-            )?;
+            let stacked = Node::stack(&outputs, 0)?;
             
             // Transpose back to [batch_size, seq_len, hidden_size]
-            Some(graph.add_op(
-                Arc::new(PermuteOp::new(vec![1, 0, 2])),
-                &[stacked],
-                true,
-            )?)
+            Some(stacked.permute(&[1, 0, 2])?)
         } else {
             // Just return the last output
             Some(h_prev.last().unwrap().clone())
@@ -584,8 +456,6 @@ mod tests {
     
     #[test]
     fn test_lstm_cell_forward() -> Result<(), Box<dyn std::error::Error>> {
-        let mut graph = ComputationGraph::new();
-        
         // Create a simple LSTM cell with known weights for testing
         let input_size = 3;
         let hidden_size = 2;
@@ -605,16 +475,15 @@ mod tests {
                 }
             }
             
-            BaseTensor::from_slice(&data, shape).unwrap()
+            Tensor::from_slice(&data, shape.to_vec()).unwrap()
         };
         
         let init_biases = |shape: &[usize]| {
             // Small biases for testing
-            BaseTensor::zeros(shape).unwrap()
+            Tensor::zeros(shape).unwrap()
         };
         
         let cell = LSTMCell::new(
-            &mut graph,
             input_size,
             hidden_size,
             true, // use_bias
@@ -623,27 +492,27 @@ mod tests {
         );
         
         // Create input and initial states
-        let x_t_data = BaseTensor::from_slice(
+        let x_t_data = Tensor::from_slice(
             &[0.1, 0.2, 0.3, 0.4, 0.5, 0.6],
-            &[batch_size, input_size],
+            vec![batch_size, input_size],
         )?;
         
-        let h_prev_data = BaseTensor::from_slice(
+        let h_prev_data = Tensor::from_slice(
             &[0.1, 0.2, 0.3, 0.4],
-            &[batch_size, hidden_size],
+            vec![batch_size, hidden_size],
         )?;
         
-        let c_prev_data = BaseTensor::from_slice(
+        let c_prev_data = Tensor::from_slice(
             &[0.05, 0.1, 0.15, 0.2],
-            &[batch_size, hidden_size],
+            vec![batch_size, hidden_size],
         )?;
         
-        let x_t = graph.add_tensor(x_t_data, false);
-        let h_prev = graph.add_tensor(h_prev_data, false);
-        let c_prev = graph.add_tensor(c_prev_data, false);
+        let x_t = Arc::new(Node::new_leaf(x_t_data));
+        let h_prev = Arc::new(Node::new_leaf(h_prev_data));
+        let c_prev = Arc::new(Node::new_leaf(c_prev_data));
         
         // Forward pass
-        let (h_t, c_t) = cell.step(&mut graph, x_t, h_prev, c_prev)?;
+        let (h_t, c_t) = cell.step(x_t, h_prev, c_prev)?;
         
         // Check output shapes
         assert_eq!(h_t.tensor.shape(), &[batch_size, hidden_size]);
@@ -667,8 +536,6 @@ mod tests {
     
     #[test]
     fn test_lstm_forward() -> Result<(), Box<dyn std::error::Error>> {
-        let mut graph = ComputationGraph::new();
-        
         // Create a simple LSTM
         let input_size = 3;
         let hidden_size = 2;
@@ -677,7 +544,6 @@ mod tests {
         let seq_len = 3;
         
         let lstm = LSTM::new(
-            &mut graph,
             input_size,
             hidden_size,
             num_layers,
@@ -685,16 +551,16 @@ mod tests {
             true,  // return_state
             true,  // return_cell_state
             true,  // use_bias
-            |shape| BaseTensor::randn(shape, 0.0, 0.1),
-            |shape| BaseTensor::zeros(shape).unwrap(),
+            |shape| Tensor::randn(shape, 0.0, 0.1),
+            |shape| Tensor::zeros(shape).unwrap(),
         );
         
         // Create input sequence [batch_size, seq_len, input_size]
-        let input_data = BaseTensor::randn(&[batch_size, seq_len, input_size], 0.0, 1.0);
-        let inputs = graph.add_tensor(input_data, true);
+        let input_data = Tensor::randn(&[batch_size, seq_len, input_size], 0.0, 1.0);
+        let inputs = Arc::new(Node::new_leaf(input_data));
         
         // Forward pass
-        let (output_sequence, final_hidden, final_cell) = lstm.forward(&mut graph, inputs, None)?;
+        let (output_sequence, final_hidden, final_cell) = lstm.forward(inputs, None)?;
         
         // Check outputs
         if let Some(output) = output_sequence {
@@ -729,8 +595,6 @@ mod tests {
     
     #[test]
     fn test_lstm_backward() -> Result<(), Box<dyn std::error::Error>> {
-        let mut graph = ComputationGraph::new();
-        
         // Create a simple LSTM
         let input_size = 3;
         let hidden_size = 2;
@@ -739,7 +603,6 @@ mod tests {
         let seq_len = 3;
         
         let lstm = LSTM::new(
-            &mut graph,
             input_size,
             hidden_size,
             num_layers,
@@ -747,32 +610,23 @@ mod tests {
             false, // return_state
             false, // return_cell_state
             true,  // use_bias
-            |shape| BaseTensor::randn(shape, 0.0, 0.1),
-            |shape| BaseTensor::zeros(shape).unwrap(),
+            |shape| Tensor::randn(shape, 0.0, 0.1),
+            |shape| Tensor::zeros(shape).unwrap(),
         );
         
         // Create input sequence [batch_size, seq_len, input_size]
-        let input_data = BaseTensor::randn(&[batch_size, seq_len, input_size], 0.0, 1.0);
-        let inputs = graph.add_tensor(input_data, true);
+        let input_data = Tensor::randn(&[batch_size, seq_len, input_size], 0.0, 1.0);
+        let inputs = Arc::new(Node::new_leaf(input_data));
         
         // Forward pass
-        let (output_sequence, _, _) = lstm.forward(&mut graph, inputs.clone(), None)?;
+        let (output_sequence, _, _) = lstm.forward(inputs.clone(), None)?;
         let outputs = output_sequence.unwrap();
         
         // Create a dummy loss (sum of outputs)
-        let ones = graph.add_tensor(
-            BaseTensor::ones(outputs.tensor.shape())?,
-            false
-        );
-        
-        let loss = graph.add_op(
-            Arc::new(MatMulOp),
-            &[outputs, ones],
-            true,
-        )?;
+        let loss = outputs.sum();
         
         // Backward pass
-        graph.backward(&loss)?;
+        loss.backward();
         
         // Check gradients
         for cell in &lstm.cells {

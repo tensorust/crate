@@ -5,7 +5,7 @@
 
 use std::ops::{Add, Div, Mul, Sub};
 use crate::error::{Result, TensorustError};
-use crate::dimension::{Dimension, DynamicDim};
+use crate::dimension::{dynamic::DynamicDim, Dimension};
 use crate::view::{Slice, SliceRange, TensorView, View};
 
 /// A trait for operations that can be performed on tensor views.
