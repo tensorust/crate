@@ -1,7 +1,7 @@
 //! Loss functions for neural networks.
 
 use crate::{
-    dimension::{dynamic::DynamicDim, static_dim::StaticDim, Dimension},
+    dimension::Dimension,
     error::Result,
     ops::{
         binary_cross_entropy_loss, binary_cross_entropy_loss_grad, cross_entropy_loss,
@@ -648,6 +648,7 @@ mod tests {
         dimension::StaticDim,
         storage::CpuStorage,
         tensor,
+        tensorust,
     };
     use approx::assert_relative_eq;
     

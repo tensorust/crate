@@ -15,6 +15,7 @@ rand_distr = "0.4.3"
 memmap2 = "0.5"
 uuid = { version = "1.0", features = ["v4"] }
 cuda-driver-sys = "0.3.0"
+approx = "0.5.1"
 
 [features]
 autodiff = []

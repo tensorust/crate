@@ -89,6 +89,7 @@ mod tests {
         dimension::StaticDim,
         storage::CpuStorage,
         tensor,
+        tensorust,
     };
 
     #[test]

@@ -184,6 +184,7 @@ mod tests {
     use crate::{
         dimension::DynamicDim,
         storage::CpuStorage,
+        tensorust,
     };
 
     #[test]

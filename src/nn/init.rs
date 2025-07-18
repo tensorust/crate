@@ -1204,7 +1204,7 @@ pub fn calculate_gain(nonlinearity: &str, param: Option<f32>) -> f32 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::tensor;
+    use crate::{tensor, tensorust};
     use approx::assert_relative_eq;
     use std::f32::consts::SQRT_2;
 

@@ -5,7 +5,7 @@
 //! and operation fusion for better performance.
 
 use crate::{
-    dimension::{dynamic::DynamicDim, static_dim::StaticDim},
+    dimension::{Dimension},
     error::Result,
     tensor::Tensor,
 };

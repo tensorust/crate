@@ -1,7 +1,7 @@
 //! Activation functions for neural networks.
 
 use crate::{
-    dimension::{dynamic::DynamicDim, Dimension},
+    dimension::Dimension,
     error::Result,
     ops::{
         elu, elu_, elu_grad, gelu, gelu_grad, leaky_relu, leaky_relu_, leaky_relu_grad, relu,
@@ -454,6 +454,7 @@ mod tests {
         dimension::StaticDim,
         storage::CpuStorage,
         tensor,
+        tensorust,
     };
     use approx::assert_relative_eq;
     

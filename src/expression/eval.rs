@@ -9,6 +9,8 @@ use crate::error::Result;
 use crate::tensor::Tensor;
 use super::{Expr, nodes::*};
 use crate::expression::Expression as ExprNode;
+use crate::dimension::Dimension;
+use crate::storage::Storage;
 
 /// A trait for evaluating expression graphs.
 pub trait Evaluate {

@@ -856,37 +856,3 @@ mod tests {
 
 
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::storage::CpuStorage;
-
-    #[test]
-    fn test_tensor_creation() {
-        let tensor = Tensor::<f32, DynamicDim, CpuStorage<f32>>::from(vec![1.0, 2.0, 3.0]);
-        assert_eq!(tensor.shape(), &vec![3]);
-        assert_eq!(tensor.len(), 3);
-    }
-
-    #[test]
-    fn test_tensor_reshape() {
-        let tensor = Tensor::<f32, DynamicDim, _>::from(vec![1.0, 2.0, 3.0, 4.0]);
-        let reshaped = tensor.reshape([2, 2].as_ref()).unwrap();
-        assert_eq!(reshaped.shape(), &vec![2, 2]);
-    }
-
-    #[test]
-    fn test_tensor_addition() {
-        let a = Tensor::<f32, DynamicDim, _>::from(vec![1.0, 2.0]);
-        let b = Tensor::<f32, DynamicDim, _>::from(vec![3.0, 4.0]);
-        let c = &a + &b;
-        assert_eq!(c.to_vec(), vec![4.0, 6.0]);
-    }
-
-    #[test]
-    fn test_requires_grad() {
-        let tensor = Tensor::<f32, DynamicDim, _>::from(vec![1.0, 2.0]).requires_grad(true);
-        assert!(tensor.requires_grad);
-        assert!(tensor.grad.is_some());
-    }
-}

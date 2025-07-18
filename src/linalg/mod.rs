@@ -12,7 +12,7 @@ pub use inverse::*;
 pub use decomposition::*;
 
 use crate::{
-    dimension::{self, dynamic::DynamicDim, static_dim::StaticDim, Dimension},
+    dimension::{self, Dimension},
     error::Result,
     storage::Storage,
     tensor::Tensor,
@@ -82,6 +82,7 @@ mod tests {
         dimension::StaticDim,
         storage::CpuStorage,
         tensor,
+        tensorust,
     };
     use approx::assert_relative_eq;
 

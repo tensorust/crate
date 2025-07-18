@@ -265,6 +265,7 @@ mod tests {
         dimension::StaticDim,
         storage::CpuStorage,
         tensor,
+        tensorust,
     };
     use approx::assert_relative_eq;
 

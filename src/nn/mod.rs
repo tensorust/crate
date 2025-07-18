@@ -14,7 +14,7 @@ pub use optimizers::*;
 pub use init::*;
 
 use crate::{
-    dimension::{Dimension},
+    dimension::{dynamic::DynamicDim, static_dim::StaticDim, Dimension},
     error::Result,
     storage::Storage,
     tensor::Tensor,

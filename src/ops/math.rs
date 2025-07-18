@@ -3,8 +3,8 @@
 use crate::{
     dimension::{static_dim::StaticDim, Dimension},
     error::Result,
-    tensor::Tensor,
     storage::Storage,
+    tensor::Tensor,
     ops::elementwise::{map, zip_with},
 };
 use num_traits::Float;
@@ -667,6 +667,7 @@ mod tests {
     use crate::{
         dimension::DynamicDim,
         storage::CpuStorage,
+        tensorust,
     };
     use approx::assert_relative_eq;
 
