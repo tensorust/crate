@@ -428,7 +428,7 @@ impl LSTM {
         graph: &mut ComputationGraph,
         inputs: Arc<Node>,
         initial_states: Option<(Vec<Arc<Node>>, Vec<Arc<Node>>)>,
-    ) -> Result<(Option<Arc<Node>>, Option<Vec<Arc<Node>>>, Option<Vec<Arc<Node>>>>, Box<dyn std::error::Error>> {
+    ) -> Result<(Option<Arc<Node>>, Option<Vec<Arc<Node>>>, Option<Vec<Arc<Node>>>), Box<dyn std::error::Error>> {
         let input_shape = inputs.tensor.shape();
         let batch_size = input_shape[0];
         let seq_len = input_shape[1];

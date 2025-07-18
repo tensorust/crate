@@ -1,6 +1,6 @@
 //! CPU storage backend implementation.
 
-use super::{Storage, StorageError};
+use super::Storage;
 use std::sync::RwLock;
 
 /// CPU storage using a simple `Vec`.
