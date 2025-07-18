@@ -4,43 +4,40 @@
 //! that represent tensor operations. The expression graph enables lazy evaluation
 //! and operation fusion for better performance.
 
-use std::fmt;
-use std::sync::Arc;
-use crate::error::{Result, TensorustError};
-use crate::tensor::Tensor;
-use crate::view::{View, TensorView};
+use crate::{
+    error::Result,
+    tensor::{Tensor, TensorLike},
+};
+use std::{fmt::Debug, sync::Arc};
 
-mod nodes;
-mod eval;
-mod fusion;
+pub mod eval;
+pub mod fusion;
+pub mod nodes;
 
-pub use nodes::*;
-pub use eval::Evaluator;
+pub use eval::{Evaluator, Gradient};
 pub use fusion::FusionOptimizer;
+pub use nodes::{BinaryOp, Node, UnaryOp};
 
 /// A trait for nodes in the expression graph.
-pub trait ExprNode: fmt::Debug + Send + Sync + 'static {
+pub trait Expression: Debug + Send + Sync + 'static {
     /// Returns the shape of the output tensor.
     fn shape(&self) -> &[usize];
-    
+
     /// Returns the number of dimensions of the output tensor.
     fn ndim(&self) -> usize {
         self.shape().len()
     }
-    
+
     /// Returns the total number of elements in the output tensor.
     fn size(&self) -> usize {
         self.shape().iter().product()
     }
-    
+
     /// Evaluates the expression node.
-    fn eval(&self, inputs: &[&Tensor]) -> Result<Tensor>;
-    
-    /// Returns the child nodes of this expression.
-    fn children(&self) -> Vec<&dyn ExprNode>;
-    
-    /// Returns a string representation of the operation.
-    fn op_type(&self) -> &'static str;
+    fn eval(&self) -> Result<Tensor>;
+
+    /// Computes the gradient of the expression node.
+    fn grad(&self, grad: &Tensor) -> Result<Gradient>;
 }
 
 /// A reference-counted expression node.

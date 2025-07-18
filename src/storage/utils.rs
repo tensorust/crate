@@ -139,7 +139,7 @@ mod tests {
     }
 
     #[test]
-    test_storage_batch() {
+    fn test_storage_batch() {
         let mut src = CpuStorage::from_vec(vec![1, 2, 3, 4]).unwrap();
         let mut dst1 = CpuStorage::from_vec(vec![0; 4]).unwrap();
         let mut dst2 = CpuStorage::from_vec(vec![0; 4]).unwrap();

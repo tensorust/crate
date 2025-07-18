@@ -4,42 +4,40 @@
 //! for tensor operations in Tensorust.
 
 use crate::{
-    dimension::{Dimension, DynamicDim, Shape, Stride},
+    dimension::{Dimension, DynamicDim},
     error::{Result, TensorustError},
-    expression::{Expr, ExprNode, IntoExpr, Evaluate, Optimize},
-    storage::{Storage, CpuStorage},
-    view::{View, TensorView},
+    expression::{Expr, Evaluate, Optimize},
+    storage::{CpuStorage, Storage},
+    view::TensorView,
 };
-use std::fmt;
-use std::marker::PhantomData;
-use std::ops::{Add, Div, Mul, Neg, Sub, Index, IndexMut};
-use std::sync::Arc;
+use std::{
+    fmt,
+    marker::PhantomData,
+    ops::{Add, Div, Index, IndexMut, Mul, Neg, Sub},
+    sync::Arc,
+};
 
-/// Core tensor type that combines storage, shape, and operations
+/// A generic n-dimensional array.
+///
+/// `Tensor` is the central data structure in `tensorust`. It is a generic struct that
+/// can be used to represent tensors of any data type, dimension, and storage backend.
+///
+/// # Type Parameters
+///
+/// * `T`: The data type of the tensor elements.
+/// * `D`: The dimension of the tensor.
+/// * `S`: The storage backend for the tensor data.
+///
 #[derive(Debug, Clone)]
-pub struct Tensor<T = f32, D = DynamicDim, S = CpuStorage<T>>
+pub struct Tensor<T, D, S>
 where
     T: Clone + Send + Sync + 'static,
     D: Dimension,
     S: Storage<T>,
 {
-    /// The actual data storage
-    storage: Arc<S>,
-    /// The shape and stride information
-    dim: D,
-    /// Offset into the storage
-    offset: usize,
-    /// Whether this tensor requires gradient computation
-    requires_grad: bool,
-    /// The computation graph node if requires_grad is true
-    grad_fn: Option<Arc<dyn Fn() -> Result<()> + Send + Sync>>,
-    /// Gradient tensor if requires_grad is true
-    grad: Option<Arc<std::sync::RwLock<Option<Tensor<T, D, CpuStorage<T>>>>>>,
-    /// Whether this tensor is a view of another tensor
-    is_view: bool,
-    /// Expression graph node if this tensor is part of a computation graph
-    expr: Option<Expr>,
-    _marker: PhantomData<T>,
+    pub(crate) storage: Arc<S>,
+    pub(crate) dim: D,
+    pub(crate) marker: PhantomData<T>,
 }
 
 impl<T, D, S> Tensor<T, D, S>
@@ -48,28 +46,27 @@ where
     D: Dimension,
     S: Storage<T>,
 {
-    /// Create a new tensor from existing storage and dimension
+    /// Creates a new tensor from the given storage and dimension.
+    ///
+    /// # Arguments
+    ///
+    /// * `storage`: The storage backend for the tensor data.
+    /// * `dim`: The dimension of the tensor.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the storage length does not match the dimension size.
     pub fn new(storage: S, dim: D) -> Result<Self> {
-        let storage_len = storage.len();
-        let required_size = dim.size();
-
-        if storage_len < required_size {
-            return Err(TensorustError::shape_mismatch(
-                vec![storage_len],
-                vec![required_size],
-            ));
+        if storage.len() != dim.size() {
+            return Err(TensorustError::ShapeMismatch {
+                expected: vec![storage.len()],
+                actual: vec![dim.size()],
+            });
         }
-
         Ok(Self {
             storage: Arc::new(storage),
             dim,
-            offset: 0,
-            requires_grad: false,
-            grad_fn: None,
-            grad: None,
-            is_view: false,
-            expr: None,
-            _marker: PhantomData,
+            marker: PhantomData,
         })
     }
 

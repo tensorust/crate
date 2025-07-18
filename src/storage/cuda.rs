@@ -1,6 +1,6 @@
 //! CUDA storage backend for GPU-accelerated tensor operations.
 
-use super::{Storage, StorageError};
+use super::Storage;
 use std::sync::Arc;
 
 /// CUDA storage backend for GPU-accelerated operations.
