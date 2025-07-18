@@ -463,7 +463,7 @@ Tensorust is licensed under the MIT License - see the [LICENSE](LICENSE) file fo
 
 ## Acknowledgments
 
-- Inspired by PyTorch, NumPy, and other great numerical computing libraries
+- A special thanks to Lawrence Freeman for his invaluable mentorship and the foundational guidance in the Rust language.
 - Built with the amazing Rust ecosystem
 
 ## Roadmap
