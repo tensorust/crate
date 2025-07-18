@@ -29,7 +29,7 @@ Add Tensorust to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-tensorust = { git = "https://github.com/yourusername/tensorust" }
+tensorust = { git = "https://github.com/tensorust/crate" }
 ```
 
 ### Optional Features
@@ -37,14 +37,14 @@ tensorust = { git = "https://github.com/yourusername/tensorust" }
 - **CUDA Support** (experimental):
   ```toml
   [dependencies]
-  tensorust = { git = "https://github.com/yourusername/tensorust", features = ["cuda"] }
+  tensorust = { git = "https://github.com/tensorust/crate", features = ["cuda"] }
   ```
   Note: Requires CUDA toolkit to be installed
 
 - **Serialization** (requires `serde`):
   ```toml
   [dependencies]
-  tensorust = { git = "https://github.com/yourusername/tensorust", features = ["serde"] }
+  tensorust = { git = "https://github.com/tensorust/crate", features = ["serde"] }
   ```
 
 ## Quick Start
@@ -359,7 +359,7 @@ Tensorust provides experimental CUDA support through the `cuda` feature. This al
 
 ```toml
 [dependencies]
-tensorust = { git = "https://github.com/yourusername/tensorust", features = ["cuda"] }
+tensorust = { git = "https://github.com/tensorust/crate", features = ["cuda"] }
 ```
 
 Example usage:
@@ -430,7 +430,7 @@ Contributions are welcome! Please read our [Contributing Guide](CONTRIBUTING.md)
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/tensorust.git
+git clone https://github.com/tensorust/crate.git
 cd tensorust
 
 # Build in release mode
@@ -468,7 +468,7 @@ Tensorust is licensed under the MIT License - see the [LICENSE](LICENSE) file fo
 
 ## Roadmap
 
-See the [open issues](https://github.com/yourusername/tensorust/issues) for a list of proposed features and known issues.
+See the [open issues](https://github.com/tensorust/crate/issues) for a list of proposed features and known issues.
 
 ## Support
 
