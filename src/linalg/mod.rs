@@ -12,10 +12,10 @@ pub use inverse::*;
 pub use decomposition::*;
 
 use crate::{
-    dimension::Dimension,
+    dimension::{self, dynamic::DynamicDim, static_dim::StaticDim, Dimension},
     error::Result,
-    tensor::Tensor,
     storage::Storage,
+    tensor::Tensor,
 };
 
 /// Trait for linear algebra operations on 2D tensors (matrices).

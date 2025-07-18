@@ -7,7 +7,7 @@ use std::fmt;
 use std::sync::Arc;
 use crate::error::Result;
 use crate::tensor::Tensor;
-use super::{Expr, ExprNode};
+use super::{Expr, Expression as ExprNode};
 
 /// A node that represents an input to the computation graph.
 #[derive(Debug)]

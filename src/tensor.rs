@@ -4,7 +4,7 @@
 //! for tensor operations in Tensorust.
 
 use crate::{
-    dimension::{Dimension, DynamicDim},
+    dimension::{dynamic::DynamicDim, static_dim::StaticDim, Dimension},
     error::{Result, TensorustError},
     expression::{Expr, Evaluate, Optimize},
     storage::{CpuStorage, Storage},
@@ -849,76 +849,12 @@ mod tests {
     }
 }
 
-// Implement basic arithmetic operations
-impl<T, D, S> Add for &Tensor<T, D, S>
-where
-    T: Clone + Default + Send + Sync + 'static + Add<Output = T>,
-    D: Dimension,
-    S: Storage<T>,
-{
-    type Output = Tensor<T, D, S>;
-
-    fn add(self, rhs: Self) -> Self::Output {
-        // This is a simplified version - in practice, you'd want to handle broadcasting
-        // and create a proper computation graph node
-        let result_storage = {
-            let self_data = self.storage.to_vec();
-            let rhs_data = rhs.storage.to_vec();
-            let result_data = self_data
-                .into_iter()
-                .zip(rhs_data)
-                .map(|(a, b)| a + b)
-                .collect();
-            S::from_vec(result_data)
-        };
-
-        // In a real implementation, you'd create a proper computation graph node here
-        Tensor::new(result_storage, self.dim.clone()).unwrap()
-    }
-}
 
 // Implement other arithmetic operations (Sub, Mul, Div, Neg) similarly
 // ...
 
-// Implement indexing and slicing
-impl<T, D, S> std::ops::Index<usize> for Tensor<T, D, S>
-where
-    T: Clone + Send + Sync + 'static,
-    D: Dimension,
-    S: Storage<T>,
-{
-    type Output = T;
 
-    fn index(&self, index: usize) -> &Self::Output {
-        // In a real implementation, you'd handle bounds checking properly
-        &self.storage.get(self.offset + index).unwrap()
-    }
-}
 
-// Implement conversion traits
-impl<T, D, S> From<Vec<T>> for Tensor<T, DynamicDim, S>
-where
-    T: Clone + Default + Send + Sync + 'static,
-    S: Storage<T>,
-{
-    fn from(data: Vec<T>) -> Self {
-        let dim = DynamicDim::new(vec![data.len()]);
-        let storage = S::from_vec(data);
-        Tensor::new(storage, dim).unwrap()
-    }
-}
-
-impl<const N: usize, T, S> From<[T; N]> for Tensor<T, StaticDim<1>, S>
-where
-    T: Clone + Default + Send + Sync + 'static,
-    S: Storage<T>,
-{
-    fn from(data: [T; N]) -> Self {
-        let dim = StaticDim::new([N]);
-        let storage = S::from_vec(data.to_vec());
-        Tensor::new(storage, dim).unwrap()
-    }
-}
 
 #[cfg(test)]
 mod tests {

@@ -4,16 +4,9 @@
 //! to build complex models. Each layer implements the forward and backward
 //! passes needed for training with automatic differentiation.
 
-mod batch_norm;
-mod conv2d;
-mod dense;
-mod dropout;
-mod lstm;
-mod rnn;
-
-pub use batch_norm::BatchNorm2d;
-pub use conv2d::Conv2dLayer;
-pub use dense::DenseLayer;
-pub use dropout::Dropout;
-pub use lstm::{LSTMCell, LSTM};
-pub use rnn::{RNNCell, RNN};
+pub mod batch_norm;
+pub mod conv2d;
+pub mod dense;
+pub mod dropout;
+pub mod lstm;
+pub mod rnn;

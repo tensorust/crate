@@ -165,30 +165,12 @@ impl DynamicDim {
 }
 
 impl Dimension for DynamicDim {
-    type Shape = Vec<usize>;
-    
-    fn shape(&self) -> &Self::Shape {
+    fn shape(&self) -> &[usize] {
         &self.shape
     }
-    
-    fn ndim(&self) -> usize {
-        self.ndim()
-    }
-    
-    fn size(&self) -> usize {
-        self.size()
-    }
-    
-    fn is_compatible_with(&self, other: &Self) -> bool {
-        self.is_compatible_with(other)
-    }
-    
-    fn broadcast_to(&self, target: &Self::Shape) -> Result<Self> {
-        self.broadcast_to(target)
-    }
-    
-    fn compute_strides(&self) -> Stride {
-        self.compute_strides()
+
+    fn from_shape(shape: &[usize]) -> Result<Self> {
+        Ok(Self::new(shape.to_vec()))
     }
 }
 

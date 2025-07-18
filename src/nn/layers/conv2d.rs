@@ -1,7 +1,12 @@
+#![cfg(feature = "autodiff")]
 //! 2D Convolutional layer implementation.
 
 use crate::{
-    autodiff::{tensor::Tensor, ComputationGraph, DifferentiableOp, Node},
+    autodiff::{
+        ops::{AddOp, ReshapeOp},
+        tensor::Tensor,
+        ComputationGraph, DifferentiableOp, Node,
+    },
     tensor::Tensor as BaseTensor,
 };
 use std::sync::Arc;

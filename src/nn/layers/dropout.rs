@@ -1,10 +1,13 @@
+#![cfg(feature = "autodiff")]
 //! Dropout layer implementation.
 //!
 //! This module implements the Dropout layer, which randomly sets a fraction of
 //! input units to 0 during training, which helps prevent overfitting.
 
 use crate::{
-    autodiff::{tensor::Tensor, ComputationGraph, DifferentiableOp, Node},
+    autodiff::{
+        ops::MultiplyOp, tensor::Tensor, ComputationGraph, DifferentiableOp, Node,
+    },
     tensor::Tensor as BaseTensor,
 };
 use rand::{rngs::StdRng, Rng, SeedableRng};

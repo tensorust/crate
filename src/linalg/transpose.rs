@@ -1,7 +1,7 @@
 //! Matrix transpose operations.
 
 use crate::{
-    dimension::{Dimension, StaticDim},
+    dimension::{static_dim::StaticDim, Dimension},
     error::Result,
     tensor::Tensor,
     storage::Storage,

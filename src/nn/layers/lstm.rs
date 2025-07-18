@@ -1,10 +1,17 @@
+#![cfg(feature = "autodiff")]
 //! Long Short-Term Memory (LSTM) layer implementation.
 //!
 //! This module implements the LSTM layer, which is a type of recurrent neural network
 //! that can learn long-term dependencies in sequential data.
 
 use crate::{
-    autodiff::{tensor::Tensor, ComputationGraph, DifferentiableOp, Node},
+    autodiff::{
+        ops::{
+            AddOp, ExpandOp, IndexOp, MatMulOp, MultiplyOp, PermuteOp, SigmoidOp, StackOp, TanhOp,
+        },
+        tensor::Tensor,
+        ComputationGraph, DifferentiableOp, Node,
+    },
     tensor::Tensor as BaseTensor,
 };
 use std::sync::Arc;

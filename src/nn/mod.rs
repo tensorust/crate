@@ -1,11 +1,11 @@
 //! Neural network building blocks for Tensorust.
 //! This module provides various neural network components like layers, activations, losses, and optimizers.
 
-mod layers;
-mod activations;
-mod losses;
-mod optimizers;
-mod init;
+pub mod layers;
+pub mod activations;
+pub mod losses;
+pub mod optimizers;
+pub mod init;
 
 pub use layers::*;
 pub use activations::*;
@@ -14,10 +14,10 @@ pub use optimizers::*;
 pub use init::*;
 
 use crate::{
-    dimension::Dimension,
-    tensor::Tensor,
-    storage::Storage,
+    dimension::{Dimension},
     error::Result,
+    storage::Storage,
+    tensor::Tensor,
 };
 
 /// Trait for all neural network layers.
@@ -90,7 +90,7 @@ where
         &self,
         predictions: &Tensor<T, D, S>,
         targets: &Tensor<T, D, S>,
-    ) -> Result<Tensor<T, crate::dimension::StaticDim<0>, S>>;
+    ) -> Result<Tensor<T, crate::dimension::static_dim::StaticDim<0>, S>>;
     
     /// Compute the gradient of the loss with respect to the predictions.
     fn gradient(

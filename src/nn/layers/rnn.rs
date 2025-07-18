@@ -1,7 +1,12 @@
+#![cfg(feature = "autodiff")]
 //! Recurrent Neural Network (RNN) layer implementation.
 
 use crate::{
-    autodiff::{tensor::Tensor, ComputationGraph, DifferentiableOp, Node},
+    autodiff::{
+        ops::{AddOp, IndexOp, MatMulOp, PermuteOp, StackOp, TanhOp},
+        tensor::Tensor,
+        ComputationGraph, DifferentiableOp, Node,
+    },
     tensor::Tensor as BaseTensor,
 };
 use std::sync::Arc;

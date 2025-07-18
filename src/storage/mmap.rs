@@ -1,6 +1,8 @@
+#![cfg(feature = "mmap")]
 //! Memory-mapped storage backend for large tensors.
 
-use super::{Storage, StorageError};
+use super::Storage;
+use crate::error::TensorustError as StorageError;
 use memmap2::{MmapMut, MmapOptions};
 use std::{
     fs::{File, OpenOptions},
@@ -95,95 +97,45 @@ impl<T> MmapStorage<T> {
 }
 
 impl<T: Clone + Send + Sync + 'static> Storage<T> for MmapStorage<T> {
-    fn with_capacity(capacity: usize) -> Result<Self, StorageError> {
-        Self::with_capacity(None, capacity)
-    }
-
-    fn from_vec(data: Vec<T>) -> Result<Self, StorageError> {
-        Self::from_vec(data)
-    }
-
     fn len(&self) -> usize {
         self.mmap.len() / std::mem::size_of::<T>()
     }
 
-    fn get(&self, index: usize) -> Option<&T> {
-        let byte_offset = index.checked_mul(std::mem::size_of::<T>())?;
-        let byte_slice = self.mmap.get(byte_offset..byte_offset + std::mem::size_of::<T>())?;
-        
-        // SAFETY: We ensure proper alignment and bounds checking above
+    fn as_slice(&self) -> &[T] {
         unsafe {
-            Some(&*(byte_slice.as_ptr() as *const T))
+            std::slice::from_raw_parts(self.mmap.as_ptr() as *const T, self.len())
         }
     }
 
-    fn get_mut(&mut self, index: usize) -> Option<&mut T> {
-        let byte_offset = index.checked_mul(std::mem::size_of::<T>())?;
-        let byte_slice = self.mmap.get_mut(byte_offset..byte_offset + std::mem::size_of::<T>())?;
-        
-        // SAFETY: We ensure proper alignment and bounds checking above
+    fn as_mut_slice(&mut self) -> &mut [T] {
         unsafe {
-            Some(&mut *(byte_slice.as_mut_ptr() as *mut T))
+            std::slice::from_raw_parts_mut(self.mmap.as_mut_ptr() as *mut T, self.len())
         }
     }
 
-    fn set(&mut self, index: usize, value: T) -> Result<(), StorageError> {
-        let byte_offset = index.checked_mul(std::mem::size_of::<T>())
-            .ok_or_else(|| StorageError::ShapeMismatch("Index out of bounds".to_string()))?;
-            
-        if byte_offset + std::mem::size_of::<T>() > self.mmap.len() {
-            return Err(StorageError::ShapeMismatch("Index out of bounds".to_string()));
-        }
-        
-        // SAFETY: We've checked the bounds above
-        unsafe {
-            let ptr = self.mmap.as_mut_ptr().add(byte_offset) as *mut T;
-            std::ptr::write(ptr, value);
-        }
-        
-        // Ensure the write is flushed to disk
-        self.mmap.flush_async()
-            .map_err(|e| StorageError::IoError(e.into()))?;
-            
-        Ok(())
+    fn from_vec(data: Vec<T>) -> Self {
+        Self::from_vec(data).unwrap()
     }
 
-    fn to_vec(&self) -> Vec<T>
+    fn with_capacity(capacity: usize) -> Self {
+        Self::with_capacity(None, capacity).unwrap()
+    }
+
+    fn from_slice(data: &[T]) -> Self
     where
         T: Clone,
     {
-        let len = self.len();
-        let mut vec = Vec::with_capacity(len);
-        
-        // SAFETY: We know the memory is properly initialized
-        unsafe {
-            vec.set_len(len);
-            std::ptr::copy_nonoverlapping(
-                self.mmap.as_ptr() as *const T,
-                vec.as_mut_ptr(),
-                len,
-            );
-        }
-        
-        vec
+        Self::from_vec(data.to_vec()).unwrap()
     }
 
-    fn clone(&self) -> std::sync::Arc<dyn Storage<T>> {
-        // Create a new memory-mapped file and copy the data
-        let len = self.len();
-        let new_storage = Self::with_capacity(None, len)
-            .expect("Failed to clone mmap storage");
-            
-        // SAFETY: We just created the new storage with the same capacity
-        unsafe {
-            std::ptr::copy_nonoverlapping(
-                self.mmap.as_ptr(),
-                new_storage.mmap.as_mut_ptr(),
-                len * std::mem::size_of::<T>(),
-            );
-        }
-        
-        std::sync::Arc::new(new_storage)
+    fn clone(&self) -> Self
+    where
+        T: Clone,
+    {
+        let new_storage =
+            Self::with_capacity(None, self.len()).expect("Failed to clone mmap storage");
+        new_storage.mmap.copy_from_slice(&self.mmap);
+        new_storage
     }
 }
 

@@ -5,8 +5,9 @@
 //! and operation fusion for better performance.
 
 use crate::{
+    dimension::{dynamic::DynamicDim, static_dim::StaticDim},
     error::Result,
-    tensor::{Tensor, TensorLike},
+    tensor::Tensor,
 };
 use std::{fmt::Debug, sync::Arc};
 
@@ -14,9 +15,14 @@ pub mod eval;
 pub mod fusion;
 pub mod nodes;
 
-pub use eval::{Evaluator, Gradient};
-pub use fusion::FusionOptimizer;
-pub use nodes::{BinaryOp, Node, UnaryOp};
+pub use self::{
+    eval::Evaluator,
+    fusion::FusionOptimizer,
+    nodes::{
+        BinaryNode, BroadcastNode, ExprNode, InputNode, ReshapeNode,
+        SliceNode, TransposeNode, UnaryNode,
+    },
+};
 
 /// A trait for nodes in the expression graph.
 pub trait Expression: Debug + Send + Sync + 'static {
@@ -34,10 +40,16 @@ pub trait Expression: Debug + Send + Sync + 'static {
     }
 
     /// Evaluates the expression node.
-    fn eval(&self) -> Result<Tensor>;
+    fn eval(&self) -> Result<Tensor<f32, crate::dimension::DynamicDim, crate::storage::CpuStorage<f32>>>;
 
     /// Computes the gradient of the expression node.
-    fn grad(&self, grad: &Tensor) -> Result<Gradient>;
+    fn grad(&self, grad: &Tensor<f32, crate::dimension::DynamicDim, crate::storage::CpuStorage<f32>>) -> Result<eval::Gradient>;
+
+    /// Returns the children of this expression node.
+    fn children(&self) -> Vec<&dyn Expression>;
+
+    /// Returns the type of this expression node.
+    fn op_type(&self) -> &'static str;
 }
 
 /// A reference-counted expression node.
@@ -105,26 +117,22 @@ pub trait ExprBuilder: Sized {
     
     /// Creates a new expression that computes the mean of the tensor.
     fn mean(self, axis: Option<usize>, keepdims: bool) -> Expr {
-        let node = MeanNode::new(self.into_expr(), axis, keepdims);
-        Arc::new(node)
+        nodes::mean(self.into_expr(), axis, keepdims)
     }
     
     /// Creates a new expression that computes the sum of the tensor.
     fn sum(self, axis: Option<usize>, keepdims: bool) -> Expr {
-        let node = SumNode::new(self.into_expr(), axis, keepdims);
-        Arc::new(node)
+        nodes::sum(self.into_expr(), axis, keepdims)
     }
     
     /// Creates a new expression that computes the maximum value of the tensor.
     fn max(self, axis: Option<usize>, keepdims: bool) -> Expr {
-        let node = MaxNode::new(self.into_expr(), axis, keepdims);
-        Arc::new(node)
+        nodes::max(self.into_expr(), axis, keepdims)
     }
     
     /// Creates a new expression that computes the minimum value of the tensor.
     fn min(self, axis: Option<usize>, keepdims: bool) -> Expr {
-        let node = MinNode::new(self.into_expr(), axis, keepdims);
-        Arc::new(node)
+        nodes::min(self.into_expr(), axis, keepdims)
     }
     
     /// Creates a new expression that reshapes the tensor.

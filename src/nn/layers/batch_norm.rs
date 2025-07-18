@@ -1,3 +1,4 @@
+#![cfg(feature = "autodiff")]
 //! Batch Normalization layer implementation.
 //!
 //! This module implements Batch Normalization as described in the paper:
@@ -5,7 +6,11 @@
 //! by Sergey Ioffe and Christian Szegedy (2015).
 
 use crate::{
-    autodiff::{tensor::Tensor, ComputationGraph, DifferentiableOp, Node},
+    autodiff::{
+        tensor::Tensor,
+        ops::{AddOp, DivOp, MultiplyOp, ReshapeOp, SqrtOp, SubOp},
+        ComputationGraph, DifferentiableOp, Node,
+    },
     tensor::Tensor as BaseTensor,
 };
 use std::sync::Arc;

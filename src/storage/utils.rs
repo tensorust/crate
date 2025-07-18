@@ -1,6 +1,7 @@
 //! Utility functions and types for working with tensor storage.
 
-use super::{Storage, StorageError, StorageHandle};
+use super::{Storage, StorageHandle};
+use crate::error::TensorustError as StorageError;
 use std::sync::Arc;
 
 /// Converts between different storage backends.

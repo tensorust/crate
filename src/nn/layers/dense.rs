@@ -1,7 +1,12 @@
+#![cfg(feature = "autodiff")]
 //! Fully connected (Dense) layer implementation.
 
 use crate::{
-    autodiff::{tensor::Tensor, ComputationGraph, DifferentiableOp, Node},
+    autodiff::{
+        ops::{AddOp, MatMulOp},
+        tensor::Tensor,
+        ComputationGraph, DifferentiableOp, Node,
+    },
     tensor::Tensor as BaseTensor,
 };
 use std::sync::Arc;

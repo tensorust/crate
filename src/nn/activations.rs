@@ -1,15 +1,15 @@
 //! Activation functions for neural networks.
 
 use crate::{
-    dimension::Dimension,
-    tensor::Tensor,
-    storage::Storage,
+    dimension::{dynamic::DynamicDim, Dimension},
     error::Result,
     ops::{
-        relu, relu_, relu_grad, sigmoid, sigmoid_, sigmoid_grad, tanh, tanh_, tanh_grad,
-        softmax, softmax_, softmax_grad, leaky_relu, leaky_relu_, leaky_relu_grad,
-        elu, elu_, elu_grad, gelu, gelu_grad,
+        elu, elu_, elu_grad, gelu, gelu_grad, leaky_relu, leaky_relu_, leaky_relu_grad, relu,
+        relu_, relu_grad, sigmoid, sigmoid_, sigmoid_grad, softmax, softmax_grad, tanh, tanh_,
+        tanh_grad,
     },
+    storage::Storage,
+    tensor::Tensor,
 };
 use std::fmt;
 

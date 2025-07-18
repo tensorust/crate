@@ -10,6 +10,7 @@ use std::fmt::{Debug, Display};
 pub mod dynamic;
 pub mod shape;
 pub mod stride;
+pub mod static_dim;
 
 pub use shape::Shape;
 pub use stride::Stride;

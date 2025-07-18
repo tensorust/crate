@@ -47,9 +47,9 @@
 
 use crate::{
     dimension::Dimension,
-    tensor::Tensor,
-    storage::Storage,
     error::Result,
+    storage::Storage,
+    tensor::Tensor,
 };
 use std::collections::HashMap;
 use std::any::Any;

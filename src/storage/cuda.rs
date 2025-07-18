@@ -1,6 +1,8 @@
+#![cfg(feature = "cuda")]
 //! CUDA storage backend for GPU-accelerated tensor operations.
 
 use super::Storage;
+use crate::error::TensorustError as StorageError;
 use std::sync::Arc;
 
 /// CUDA storage backend for GPU-accelerated operations.
@@ -15,19 +17,20 @@ pub struct CudaStorage<T> {
 
 impl<T> CudaStorage<T> {
     /// Creates a new CUDA storage with the given capacity.
-    pub fn with_capacity(capacity: usize) -> Result<Self, StorageError> {
+    pub fn with_capacity(capacity: usize) -> Self {
         if capacity == 0 {
-            return Ok(Self {
+            return Self {
                 device_ptr: std::ptr::null_mut(),
                 len: 0,
                 _phantom: std::marker::PhantomData,
-            });
+            };
         }
 
         let elem_size = std::mem::size_of::<T>();
-        let size = capacity.checked_mul(elem_size).ok_or_else(|| {
-            StorageError::AllocationFailed("Capacity too large".to_string())
-        })?;
+        let size = capacity
+            .checked_mul(elem_size)
+            .ok_or_else(|| StorageError::AllocationFailed("Capacity too large".to_string()))
+            .unwrap();
 
         let mut device_ptr = std::ptr::null_mut();
         let result = unsafe {
@@ -36,24 +39,24 @@ impl<T> CudaStorage<T> {
         };
 
         if result != cuda_driver_sys::CUresult::CUDA_SUCCESS {
-            return Err(StorageError::CudaError(format!(
+            panic!(
                 "Failed to allocate {} bytes on device: {:?}",
                 size, result
-            )));
+            );
         }
 
-        Ok(Self {
+        Self {
             device_ptr,
             len: capacity,
             _phantom: std::marker::PhantomData,
-        })
+        }
     }
 
     /// Creates a new CUDA storage from a vector.
-    pub fn from_vec(data: Vec<T>) -> Result<Self, StorageError> {
+    pub fn from_vec(data: Vec<T>) -> Self {
         let len = data.len();
-        let mut storage = Self::with_capacity(len)?;
-        
+        let mut storage = Self::with_capacity(len);
+
         if len > 0 {
             // Copy data to device
             let size = len * std::mem::size_of::<T>();
@@ -66,14 +69,11 @@ impl<T> CudaStorage<T> {
             };
 
             if result != cuda_driver_sys::CUresult::CUDA_SUCCESS {
-                return Err(StorageError::CudaError(format!(
-                    "Failed to copy data to device: {:?}",
-                    result
-                )));
+                panic!("Failed to copy data to device: {:?}", result);
             }
         }
 
-        Ok(storage)
+        storage
     }
 
     /// Returns a raw pointer to the device memory.
@@ -88,90 +88,44 @@ impl<T> CudaStorage<T> {
 }
 
 impl<T: Clone + Send + Sync + 'static> Storage<T> for CudaStorage<T> {
-    fn with_capacity(capacity: usize) -> Result<Self, StorageError> {
-        Self::with_capacity(capacity)
-    }
-
-    fn from_vec(data: Vec<T>) -> Result<Self, StorageError> {
-        Self::from_vec(data)
-    }
-
     fn len(&self) -> usize {
         self.len
     }
 
-    fn get(&self, _index: usize) -> Option<&T> {
-        // Getting a reference to device memory is not directly supported
-        // In a real implementation, you would need to copy the data back to host memory
-        None
+    fn as_slice(&self) -> &[T] {
+        // This is not safe and is a placeholder.
+        // A real implementation would need to copy data from the device.
+        unsafe { std::slice::from_raw_parts(self.device_ptr as *const T, self.len) }
     }
 
-    fn get_mut(&mut self, _index: usize) -> Option<&mut T> {
-        // Getting a mutable reference to device memory is not directly supported
-        // In a real implementation, you would need to copy the data back to host memory
-        None
+    fn as_mut_slice(&mut self) -> &mut [T] {
+        // This is not safe and is a placeholder.
+        // A real implementation would need to copy data from the device.
+        unsafe { std::slice::from_raw_parts_mut(self.device_ptr as *mut T, self.len) }
     }
 
-    fn set(&mut self, index: usize, value: T) -> Result<(), StorageError> {
-        if index >= self.len {
-            return Err(StorageError::ShapeMismatch(format!(
-                "Index {} out of bounds for length {}",
-                index, self.len
-            )));
-        }
-
-        // Copy the single value to device memory
-        let ptr = unsafe { self.device_ptr.add(index * std::mem::size_of::<T>()) };
-        let result = unsafe {
-            cuda_driver_sys::cuMemcpyHtoD_v2(
-                ptr as u64,
-                &value as *const _ as *const _,
-                std::mem::size_of::<T>(),
-            )
-        };
-
-        if result != cuda_driver_sys::CUresult::CUDA_SUCCESS {
-            return Err(StorageError::CudaError(format!(
-                "Failed to set value at index {}: {:?}",
-                index, result
-            )));
-        }
-
-        Ok(())
+    fn from_vec(data: Vec<T>) -> Self {
+        Self::from_vec(data).unwrap()
     }
 
-    fn to_vec(&self) -> Vec<T>
+    fn with_capacity(capacity: usize) -> Self {
+        Self::with_capacity(capacity).unwrap()
+    }
+
+    fn from_slice(data: &[T]) -> Self
     where
         T: Clone,
     {
-        if self.len == 0 {
-            return Vec::new();
-        }
-
-        let mut vec = Vec::with_capacity(self.len);
-        let size = self.len * std::mem::size_of::<T>();
-        
-        // SAFETY: We've allocated the vector with the correct capacity
-        unsafe {
-            vec.set_len(self.len);
-            let result = cuda_driver_sys::cuMemcpyDtoH_v2(
-                vec.as_mut_ptr() as *mut _,
-                self.device_ptr as u64,
-                size,
-            );
-
-            if result != cuda_driver_sys::CUresult::CUDA_SUCCESS {
-                panic!("Failed to copy data from device: {:?}", result);
-            }
-        }
-
-        vec
+        Self::from_vec(data.to_vec()).unwrap()
     }
 
-    fn clone(&self) -> std::sync::Arc<dyn Storage<T>> {
-        let mut new_storage = Self::with_capacity(self.len)
-            .expect("Failed to allocate device memory for clone");
-        
+    fn clone(&self) -> Self
+    where
+        T: Clone,
+    {
+        let mut new_storage =
+            Self::with_capacity(self.len).expect("Failed to allocate device memory for clone");
+
         if self.len > 0 {
             let size = self.len * std::mem::size_of::<T>();
             let result = unsafe {
@@ -187,7 +141,7 @@ impl<T: Clone + Send + Sync + 'static> Storage<T> for CudaStorage<T> {
             }
         }
 
-        std::sync::Arc::new(new_storage)
+        new_storage
     }
 }
 

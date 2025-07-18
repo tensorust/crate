@@ -1,6 +1,7 @@
 //! CPU storage backend implementation.
 
 use super::Storage;
+use crate::error::TensorustError as StorageError;
 use std::sync::RwLock;
 
 /// CPU storage using a simple `Vec`.
@@ -11,67 +12,63 @@ pub struct CpuStorage<T> {
 
 impl<T> CpuStorage<T> {
     /// Create a new CPU storage with the given capacity.
-    pub fn with_capacity(capacity: usize) -> Result<Self, StorageError> {
-        Ok(Self {
+    pub fn with_capacity(capacity: usize) -> Self {
+        Self {
             data: RwLock::new(Vec::with_capacity(capacity)),
-        })
+        }
     }
 
     /// Create a new CPU storage from a vector.
-    pub fn from_vec(data: Vec<T>) -> Result<Self, StorageError> {
-        Ok(Self {
+    pub fn from_vec(data: Vec<T>) -> Self {
+        Self {
             data: RwLock::new(data),
-        })
+        }
     }
 }
 
 impl<T: Clone + Send + Sync + 'static> Storage<T> for CpuStorage<T> {
-    fn with_capacity(capacity: usize) -> Result<Self, StorageError> {
-        Self::with_capacity(capacity)
-    }
-
-    fn from_vec(data: Vec<T>) -> Result<Self, StorageError> {
-        Self::from_vec(data)
-    }
-
     fn len(&self) -> usize {
         self.data.read().unwrap().len()
     }
 
-    fn get(&self, index: usize) -> Option<&T> {
+    fn as_slice(&self) -> &[T] {
         // This is a bit of a hack to work around RwLock's limitations
         // In practice, you'd want a different approach for production code
-        unsafe { std::mem::transmute(self.data.read().unwrap().get(index)) }
+        unsafe { std::mem::transmute(&*self.data.read().unwrap()) }
     }
 
-    fn get_mut(&mut self, index: usize) -> Option<&mut T> {
-        self.data.get_mut().unwrap().get_mut(index)
+    fn as_mut_slice(&mut self) -> &mut [T] {
+        self.data.get_mut().unwrap()
     }
 
-    fn set(&mut self, index: usize, value: T) -> Result<(), StorageError> {
-        let mut data = self.data.write().unwrap();
-        if index >= data.len() {
-            return Err(StorageError::ShapeMismatch(format!(
-                "Index {} out of bounds for length {}",
-                index,
-                data.len()
-            )));
+    fn from_vec(data: Vec<T>) -> Self {
+        Self {
+            data: RwLock::new(data),
         }
-        data[index] = value;
-        Ok(())
     }
 
-    fn to_vec(&self) -> Vec<T>
+    fn with_capacity(capacity: usize) -> Self {
+        Self {
+            data: RwLock::new(Vec::with_capacity(capacity)),
+        }
+    }
+
+    fn from_slice(data: &[T]) -> Self
     where
         T: Clone,
     {
-        self.data.read().unwrap().clone()
+        Self {
+            data: RwLock::new(data.to_vec()),
+        }
     }
 
-    fn clone(&self) -> std::sync::Arc<dyn Storage<T>> {
-        std::sync::Arc::new(Self {
+    fn clone(&self) -> Self
+    where
+        T: Clone,
+    {
+        Self {
             data: RwLock::new(self.data.read().unwrap().clone()),
-        })
+        }
     }
 }
 

@@ -74,15 +74,6 @@ pub trait Shape: fmt::Debug + Clone + Send + Sync + 'static {
     }
 }
 
-impl Shape for [usize] {
-    fn ndim(&self) -> usize {
-        self.len()
-    }
-    
-    fn as_slice(&self) -> &[usize] {
-        self
-    }
-}
 
 impl<const N: usize> Shape for [usize; N] {
     fn ndim(&self) -> usize {

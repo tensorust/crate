@@ -1,16 +1,15 @@
 //! Loss functions for neural networks.
 
 use crate::{
-    dimension::Dimension,
-    tensor::Tensor,
-    storage::Storage,
+    dimension::{dynamic::DynamicDim, static_dim::StaticDim, Dimension},
     error::Result,
     ops::{
-        mse_loss, mse_loss_grad, cross_entropy_loss, cross_entropy_loss_grad,
-        binary_cross_entropy_loss, binary_cross_entropy_loss_grad,
-        l1_loss, l1_loss_grad, smooth_l1_loss, smooth_l1_loss_grad,
-        kl_div_loss, kl_div_loss_grad, nll_loss, nll_loss_grad,
+        binary_cross_entropy_loss, binary_cross_entropy_loss_grad, cross_entropy_loss,
+        cross_entropy_loss_grad, kl_div_loss, kl_div_loss_grad, l1_loss, l1_loss_grad, mse_loss,
+        mse_loss_grad, nll_loss, nll_loss_grad, smooth_l1_loss, smooth_l1_loss_grad,
     },
+    storage::Storage,
+    tensor::Tensor,
 };
 use std::fmt;
 
@@ -640,23 +639,6 @@ where
         Vec::new()
     }
     
-    /// Compute the loss between the predictions and targets.
-    pub fn compute(
-        &self,
-        predictions: &Tensor<T, D, S>,
-        targets: &Tensor<T, D, S>,
-    ) -> Result<Tensor<T, crate::dimension::StaticDim<0>, S>> {
-        self.loss.compute(predictions, targets)
-    }
-    
-    /// Compute the gradient of the loss with respect to the predictions.
-    pub fn gradient(
-        &self,
-        predictions: &Tensor<T, D, S>,
-        targets: &Tensor<T, D, S>,
-    ) -> Result<Tensor<T, D, S>> {
-        self.loss.gradient(predictions, targets)
-    }
 }
 
 #[cfg(test)]

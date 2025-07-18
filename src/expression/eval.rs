@@ -7,7 +7,8 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use crate::error::Result;
 use crate::tensor::Tensor;
-use super::{Expr, ExprNode};
+use super::{Expr, nodes::*};
+use crate::expression::Expression as ExprNode;
 
 /// A trait for evaluating expression graphs.
 pub trait Evaluate {
@@ -15,13 +16,26 @@ pub trait Evaluate {
     fn eval(&self, inputs: &[&Tensor]) -> Result<Tensor>;
 }
 
+/// A map of gradients.
+pub type Gradient<T, D, S> = std::collections::HashMap<usize, Tensor<T, D, S>>;
+
 /// An evaluator for expression graphs.
 #[derive(Default)]
-pub struct Evaluator {
-    cache: HashMap<usize, Tensor>,
+pub struct Evaluator<T, D, S>
+where
+    T: Clone + Send + Sync + 'static,
+    D: Dimension,
+    S: Storage<T>,
+{
+    cache: HashMap<usize, Tensor<T, D, S>>,
 }
 
-impl Evaluator {
+impl<T, D, S> Evaluator<T, D, S>
+where
+    T: Clone + Send + Sync + 'static,
+    D: Dimension,
+    S: Storage<T>,
+{
     /// Creates a new evaluator.
     pub fn new() -> Self {
         Self {
@@ -30,7 +44,7 @@ impl Evaluator {
     }
     
     /// Evaluates an expression node.
-    pub fn eval(&mut self, expr: &Expr) -> Result<Tensor> {
+    pub fn eval(&mut self, expr: &Expr) -> Result<Tensor<T, D, S>> {
         let expr_ptr = expr.as_ref() as *const dyn ExprNode as *const () as usize;
         
         // Check if the result is already in the cache
@@ -39,13 +53,13 @@ impl Evaluator {
         }
         
         // Evaluate child nodes
-        let child_results: Vec<Tensor> = expr.children()
+        let child_results: Vec<Tensor<T, D, S>> = expr.children()
             .iter()
             .map(|child| self.eval(&Arc::from(*child)))
             .collect::<Result<_>>()?;
         
         // Convert child results to references for the eval method
-        let child_refs: Vec<&Tensor> = child_results.iter().collect();
+        let child_refs: Vec<&Tensor<T, D, S>> = child_results.iter().collect();
         
         // Evaluate the current node
         let result = expr.eval(&child_refs)?;

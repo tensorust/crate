@@ -5,7 +5,8 @@
 
 use std::sync::Arc;
 use crate::error::Result;
-use super::{Expr, ExprNode, Evaluate};
+use super::{Expr, Evaluate, nodes::*};
+use crate::expression::Expression as ExprNode;
 
 /// A trait for optimizing expression graphs.
 pub trait Optimize {

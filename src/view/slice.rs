@@ -4,7 +4,7 @@
 //! including range-based indexing and strided access.
 
 use std::fmt;
-use std::ops::{Bound, Range, RangeBounds};
+use std::ops::{Bound, Range, RangeBounds, RangeFrom, RangeFull, RangeTo};
 use crate::error::{Result, TensorustError};
 
 /// A range that can be used for slicing tensors.
@@ -178,27 +178,6 @@ impl From<RangeFull> for SliceRange {
     }
 }
 
-impl<R: RangeBounds<usize>> From<R> for SliceRange {
-    fn from(range: R) -> Self {
-        let start = match range.start_bound() {
-            Bound::Included(&n) => Some(n),
-            Bound::Excluded(&n) => Some(n + 1),
-            Bound::Unbounded => None,
-        };
-        
-        let end = match range.end_bound() {
-            Bound::Included(&n) => Some(n + 1),
-            Bound::Excluded(&n) => Some(n),
-            Bound::Unbounded => None,
-        };
-        
-        Self {
-            start,
-            end,
-            step: 1,
-        }
-    }
-}
 
 /// A slice of a tensor along one or more dimensions.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
